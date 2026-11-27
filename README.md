@@ -42,6 +42,7 @@ Use a separate demo data volume if you also run a real portal. The demo command 
 ## Maintain
 
 - Back up the `portal-data` volume, including `portal.sqlite3` and the `private/` PDFs. Stop both services before taking or restoring a filesystem backup so database and files represent the same point in time. Preserve the `.env` separately.
+- Run `./update.sh` from your deployment checkout after backing up. If the checkout predates the script, first run `git pull --ff-only origin main`. The script fast-forwards `main`, rebuilds the image shared by web and mail, restarts the services as needed, and shows their status. The web container applies migrations on startup.
 - Check email failures with `docker compose logs mail`. Failed messages retry with backoff. A mail process interrupted immediately after provider acceptance can deliver the same message again.
 - Apply dependency and base image updates by rebuilding the image. Take a backup before upgrading and periodically run `docker compose exec web python manage.py clearsessions`.
 - Keep the app's data volume off the public web root. Serve only the app's static assets directly.
