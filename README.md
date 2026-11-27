@@ -26,7 +26,7 @@ Redirect HTTP to HTTPS at the proxy. Keep the web service private behind the pro
 
 ## Configure the portal
 
-- Sign in and choose **Manage**, or go directly to `/manage/`. Enter your authenticator code to open the management pages.
+- Sign in with your password and authenticator code, then choose **Manage**. You can also start at `/manage/` to go straight to the dashboard after signing in.
 - Under **Settings**, edit the homepage introduction, team description, logo, colours, font, and access-request inbox. Category descriptions, document titles, and teasers are public.
 - Under **Accounts**, create customers and choose Basic, Pro, or Expert. Higher tiers include lower tiers. You can enable, disable, delete, or send a password reset from an account page. Owners can also grant administrator access. The server operator uses `enable_totp` to enrol new administrators.
 - Under **Documents**, choose **Add document**, complete the access settings, and upload a PDF. The file is a draft until you choose **Publish** under **Versions**. Upload replacements from the same page and use **Restore** to bring back a retained version. Agreement acceptance records are on that document's page.

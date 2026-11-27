@@ -18,8 +18,10 @@ manage = Blueprint("manage", __name__, url_prefix="/manage")
 
 @manage.before_request
 def staff_only():
-    if not g.user or (g.user["is_staff"] and not g.staff):
-        return redirect(url_for("auth.manage_login", next=request.path))
+    if not g.user:
+        return redirect(url_for("auth.login", next=request.path))
+    if g.user["is_staff"] and not g.staff:
+        return redirect(url_for("auth.authenticator", next=request.path))
     if not g.staff:
         abort(403)
 

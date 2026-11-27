@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pyotp
 
 from .app import create_app
+from .auth import signature
 from .db import initialize, now, one, rows, run
 
 PASSWORD = "temporary-test-password"
@@ -49,14 +50,24 @@ class PortalFlows(unittest.TestCase):
         self.assertIsNotNone(match, f"No CSRF field at {source or path}: {form_page.status_code}")
         return self.client.post(path, data={**(data or {}), "csrf_token": match.group(1).decode()})
 
-    def sign_in(self, username, staff=False):
-        path = "/manage/login/" if staff else "/account/login/"
+    def sign_in(self, username, staff=False, target=None):
+        path = "/account/login/"
+        if target:
+            path += f"?next={target}"
         fields = {"username": username, "password": PASSWORD}
-        if staff:
-            key = hashlib.sha256(username.encode()).digest()[:20]
-            fields["otp"] = pyotp.TOTP(base64.b32encode(key).decode()).now()
         result = self.post(path, fields)
         self.assertEqual(result.status_code, 302, result.data[:2600])
+        if staff:
+            self.assertTrue(result.location.startswith("/account/authenticator/"))
+            challenge = self.client.get(result.location)
+            self.assertNotIn(b'name="password"', challenge.data)
+            self.assertIn("/account/login/", self.client.get("/manage/").location)
+            key = hashlib.sha256(username.encode()).digest()[:20]
+            code = pyotp.TOTP(base64.b32encode(key).decode()).now()
+            result = self.post(result.location, {"otp": code})
+            self.assertEqual(result.status_code, 302)
+            self.assertEqual(result.location, target or "/library/")
+        return result
 
     def upload(self):
         response = self.post("/manage/documents/new/", {
@@ -82,6 +93,7 @@ class PortalFlows(unittest.TestCase):
             self.assertEqual(pdf.data, b"%PDF-1.4\nreport")
         publish = f"/manage/documents/{doc}/versions/{rev}/publish/"
         self.assertEqual(self.post(publish).status_code, 302)
+        self.post("/account/logout/", source="/")
         self.sign_in("reader")
         self.assertEqual(self.client.get(preview).status_code, 403)
         self.assertIn(b"Expert required", self.client.get(path).data)
@@ -103,9 +115,8 @@ class PortalFlows(unittest.TestCase):
         self.assertEqual(self.client.get(download).status_code, 403)
 
     def test_staff_roles_mfa_and_csrf(self):
-        self.sign_in("admin")
-        self.assertIn("/manage/login/", self.client.get("/manage/").location)
         self.sign_in("admin", staff=True)
+        self.assertEqual(self.client.get("/manage/").status_code, 200)
         self.assertEqual(self.client.get(f"/manage/accounts/{self.owner}/").status_code, 404)
         self.assertEqual(self.client.get(f"/manage/accounts/{self.admin}/").status_code, 404)
         account = f"/manage/accounts/{self.reader}/"
@@ -115,11 +126,26 @@ class PortalFlows(unittest.TestCase):
         self.assertEqual(self.post(account, data).status_code, 302)
         with self.app.app_context():
             self.assertEqual(one("SELECT is_staff,tier FROM portal_account WHERE id=?", self.reader)["is_staff"], 0)
-        self.sign_in("owner", staff=True)
+        self.post("/account/logout/", source="/")
+        self.sign_in("owner", staff=True, target="/manage/")
         self.assertIn(b'name="is_staff"', self.client.get(account).data)
         self.assertEqual(self.post(account, data).status_code, 302)
         with self.app.app_context():
             self.assertEqual(one("SELECT is_staff FROM portal_account WHERE id=?", self.reader)["is_staff"], 1)
+
+    def test_existing_admin_session_only_asks_for_authenticator(self):
+        with self.app.app_context():
+            account = one("SELECT * FROM portal_account WHERE id=?", self.admin)
+            with self.client.session_transaction() as cookie:
+                cookie.update(account=self.admin, stamp=signature(account), otp=None)
+        response = self.client.get("/manage/documents/")
+        self.assertIn("/account/authenticator/", response.location)
+        self.assertNotIn(b'name="password"', self.client.get(response.location).data)
+        key = hashlib.sha256(b"admin").digest()[:20]
+        code = pyotp.TOTP(base64.b32encode(key).decode()).now()
+        result = self.post(response.location, {"otp": code})
+        self.assertEqual(result.location, "/manage/documents/")
+        self.assertEqual(self.client.get(result.location).status_code, 200)
 
     def test_password_reset_uses_smtp_and_invalidates_link_and_session(self):
         stale = self.app.test_client()

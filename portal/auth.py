@@ -98,10 +98,25 @@ def destination(value, fallback):
     return fallback
 
 
-@auth.route("/manage/login/", methods=["GET", "POST"], defaults={"admin": True}, endpoint="manage_login")
+def establish_session(account, device=None):
+    session.clear()
+    session.update(account=account["id"], stamp=signature(account), otp=device)
+    run("UPDATE portal_account SET last_login=? WHERE id=?", now(), account["id"])
+
+
+@auth.get("/manage/login/")
+def manage_login():
+    target = destination(request.args.get("next"), "/manage/")
+    return redirect(url_for("auth.login", next=target))
+
+
 @auth.route("/account/login/", methods=["GET", "POST"])
-def login(admin=False):
-    target = destination(request.values.get("next"), "/manage/" if admin else "/library/")
+def login():
+    target = destination(request.values.get("next"), "/library/")
+    if g.user:
+        if g.user["is_staff"] and not g.staff:
+            return redirect(url_for("auth.authenticator", next=target))
+        return redirect(target)
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
@@ -110,18 +125,54 @@ def login(admin=False):
         user = one("SELECT * FROM portal_account WHERE username=? AND is_active=1", username)
         # A dummy hash keeps an unknown username on the same expensive path.
         valid = verify_password(user["password"] if user else current_app.config["DUMMY_PASSWORD"], password)
-        if user and valid and (not admin or user["is_staff"]):
+        if user and valid:
             with write():
                 refreshed = one("SELECT * FROM portal_account WHERE id=? AND is_active=1", user["id"])
                 if refreshed and signature(refreshed) == signature(user):
-                    device = verify_otp(user, request.form.get("otp", "")) if admin else None
-                    if not admin or device:
+                    if refreshed["is_staff"]:
                         session.clear()
-                        session.update(account=user["id"], stamp=signature(user), otp=device)
-                        run("UPDATE portal_account SET last_login=? WHERE id=?", now(), user["id"])
-                        return redirect(target)
-        flash("Check your username, password, and authenticator code." if admin else "Check your username and password.")
-    return render_template("sign_in.html", admin=admin, target=target)
+                        session["mfa_pending"] = {
+                            "id": refreshed["id"], "stamp": signature(refreshed),
+                            "target": target, "expires": int(time.time()) + 300,
+                        }
+                        return redirect(url_for("auth.authenticator"))
+                    establish_session(refreshed)
+                    return redirect(target)
+        session.pop("mfa_pending", None)
+        flash("Check your username and password.")
+    return render_template("sign_in.html", target=target)
+
+
+@auth.route("/account/authenticator/", methods=["GET", "POST"])
+def authenticator():
+    target = destination(request.args.get("next"), "/manage/")
+    if g.staff:
+        return redirect(target)
+    pending = session.get("mfa_pending")
+    if g.user and g.user["is_staff"]:
+        identifier, stamp = g.user["id"], signature(g.user)
+    elif pending and pending["expires"] > time.time():
+        identifier, stamp, target = pending["id"], pending["stamp"], pending["target"]
+    else:
+        session.pop("mfa_pending", None)
+        return redirect(url_for("auth.login", next=target))
+    account = one("SELECT * FROM portal_account WHERE id=? AND is_active=1 AND is_staff=1", identifier)
+    if not account or not hmac.compare_digest(signature(account), stamp):
+        session.clear()
+        return redirect(url_for("auth.login", next=target))
+    if request.method == "POST":
+        if not limit("authenticator", account["username"]):
+            abort(429)
+        with write():
+            account = one("SELECT * FROM portal_account WHERE id=? AND is_active=1 AND is_staff=1", identifier)
+            if not account or not hmac.compare_digest(signature(account), stamp):
+                session.clear()
+                return redirect(url_for("auth.login", next=target))
+            if device := verify_otp(account, request.form.get("otp", "")):
+                establish_session(account, device)
+                return redirect(target)
+        flash("Check the current code in your authenticator and try again.")
+    return render_template("authenticator.html", target=target)
 
 
 @auth.post("/account/logout/")
