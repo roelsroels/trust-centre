@@ -68,7 +68,7 @@ def register_commands(app):
                 if brand or one("SELECT id FROM portal_document LIMIT 1"):
                     raise click.ClickException("Use a fresh portal database to install the demo.")
                 run("""INSERT INTO portal_branding(name,introduction,team,logo_url,accent,ink,font,access_inbox,show_demo_team)
-                       VALUES (?,?,?,'',?,?,'sans','',1)""", COMPANY,
+                       VALUES (?,?,?,'',?,?,'chromatica','',1)""", COMPANY,
                     "Explore how our fictional workflow platform handles security, privacy, and compliance.",
                     "Meet the people behind our security, audit, and privacy programmes.", CORAL, BURGUNDY)
                 for sample in SAMPLES:

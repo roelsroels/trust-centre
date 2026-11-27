@@ -75,3 +75,9 @@ def initialize():
             run("UPDATE portal_branding SET accent=? WHERE lower(accent)='#076e65'", CORAL)
             run("UPDATE portal_branding SET ink=? WHERE lower(ink)='#132a42'", BURGUNDY)
             run("UPDATE trust_installed SET version=2")
+
+        if one("SELECT version FROM trust_installed")["version"] < 3:
+            run("UPDATE portal_branding SET font='chromatica' WHERE font='sans'")
+            run("UPDATE trust_installed SET version=3")
+        run("""INSERT OR IGNORE INTO trust_font(key,name,regular,medium,italic,medium_italic)
+               VALUES ('chromatica','Chromatica','','','','')""")

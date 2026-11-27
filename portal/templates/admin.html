@@ -21,6 +21,8 @@
   {% elif not fields and section == 'documents' %}<a class="button" href="{{ url_for('manage.edit_document') }}">Add document</a>
   {% elif section == 'accounts' %}<a class="button" href="{{ url_for('manage.edit_account') }}">Add account</a>
   {% elif section == 'categories' %}<a class="button" href="{{ url_for('manage.edit_category') }}">Add category</a>
+  {% elif section == 'settings' %}<a class="button outline" href="{{ url_for('manage.fonts') }}">Manage webfonts</a>
+  {% elif section == 'fonts' %}<a class="button" href="{{ url_for('manage.edit_font') }}">Add webfont</a>
   {% elif section == 'subscribers' %}<a class="button" href="{{ url_for('manage.import_subscribers') }}">Import CSV</a>{% endif %}
 </div>
 
@@ -39,6 +41,9 @@
     <form method="post" class="actions">{{ csrf() }}<button>{{ label }}</button><a href="{{ back }}">Cancel</a></form>
   </section>
 {% elif fields %}
+  {% if section == 'font_form' %}
+  <p>Use direct HTTPS links to licensed WOFF2 files. If your font host is on another domain, it must allow this site to load the files.</p>
+  {% endif %}
   <section class="panel form-panel">
     <form class="manage-form" method="post" enctype="multipart/form-data"{% if action %} action="{{ action }}"{% endif %}>{{ csrf() }}
       {% for field in fields %}
@@ -134,6 +139,9 @@
           <div class="actions"><a href="{{ url_for('manage.edit_account', identifier=entry.user_id) }}">Review account</a>
           <form method="post" action="{{ url_for('manage.handle_request', identifier=entry.id) }}">{{ csrf() }}<button class="outline">Mark handled</button></form></div>
         {% endif %}
+      {% elif section == 'fonts' %}
+        <div><strong>{{ entry.name }}</strong><span class="metadata">{{ 'Webfont configured' if entry.regular else 'Uses the fallback until a webfont URL is set' }}</span></div>
+        <a class="button outline" href="{{ url_for('manage.edit_font', key=entry.key) }}">Edit webfont</a>
       {% elif section == 'subscribers' %}
         <div><strong>{{ entry.email }}</strong><span class="metadata">{{ entry.changed|shortdate }}</span></div>
         <span class="pill">{{ {'active':'Subscribed','off':'Unsubscribed','pending':'Awaiting confirmation'}[entry.status] }}</span>

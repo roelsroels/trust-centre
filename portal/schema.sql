@@ -41,3 +41,12 @@ CREATE TABLE IF NOT EXISTS trust_auth_limit (
     hits INTEGER NOT NULL,
     expires INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS trust_font (
+    key TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    regular TEXT NOT NULL,
+    medium TEXT NOT NULL,
+    italic TEXT NOT NULL,
+    medium_italic TEXT NOT NULL
+);

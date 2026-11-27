@@ -11,6 +11,7 @@ from .admin import manage
 from .auth import auth, hash_password, load_user
 from .cli import register_commands
 from .db import close_db
+from .fonts import BUILTIN, faces
 from .models import TIERS, button_text
 from .views import branding, public
 
@@ -47,7 +48,9 @@ def create_app(**overrides):
     @app.context_processor
     def shared():
         brand = branding()
-        return {"brand": brand, "button_text": button_text(brand["accent"]), "user": g.get("user"), "staff": g.get("staff"),
+        font_faces = faces(brand["font"])
+        font_class = brand["font"] if brand["font"] in BUILTIN else "web"
+        return {"brand": brand, "font_faces": font_faces, "font_class": font_class, "button_text": button_text(brand["accent"]), "user": g.get("user"), "staff": g.get("staff"),
                 "tiers": TIERS, "messages": get_flashed_messages()}
 
     @app.template_filter("shortdate")

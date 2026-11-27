@@ -2,6 +2,7 @@ import csv
 import io
 import re
 import sqlite3
+import uuid
 from urllib.parse import urlsplit
 
 from email_validator import EmailNotValidError, validate_email
@@ -9,6 +10,7 @@ from flask import Blueprint, abort, flash, g, redirect, render_template, request
 
 from .auth import hash_password, password_error, reset_message
 from .db import now, one, rows, run, write
+from .fonts import STYLES, font_choices, font_url
 from .models import BRANDING, TIERS
 from .services import add_revision, discard, invite, publish, prune, stash_file
 from .views import serve_pdf
@@ -419,7 +421,7 @@ def settings():
                     raise ValueError("Enter a valid HTTPS logo URL up to 200 characters long.")
             if any(not re.fullmatch(r"#[0-9a-fA-F]{6}", values[key]) for key in ("accent", "ink")):
                 raise ValueError("Enter six-digit hex colours.")
-            if values["font"] not in {"sans", "serif", "mono"}:
+            if values["font"] not in dict(font_choices()):
                 raise ValueError("Choose a font.")
             with write():
                 current = one("SELECT id FROM portal_branding ORDER BY id LIMIT 1")
@@ -438,6 +440,44 @@ def settings():
         field("team", "Compliance team description", "textarea"), field("show_demo_team", "Show fictional team portraits", "checkbox"),
         field("logo_url", "Logo URL", "url", maximum=200), field("accent", "Accent colour", "color"),
         field("ink", "Text colour", "color"), field("font", "Font", "select",
-              choices=[("sans", "System sans"), ("serif", "System serif"), ("mono", "System mono")]),
+              choices=font_choices()),
         field("access_inbox", "Email for access requests", "email", maximum=254),
     ], values=dict(existing) if existing else BRANDING)
+
+
+@manage.get("/settings/fonts/")
+def fonts():
+    return page("Webfonts", "fonts", entries=rows("SELECT * FROM trust_font ORDER BY key<>'chromatica',name"))
+
+
+@manage.route("/settings/fonts/new/", methods=["GET", "POST"])
+@manage.route("/settings/fonts/<key>/", methods=["GET", "POST"])
+def edit_font(key=None):
+    entry = selected("SELECT * FROM trust_font WHERE key=?", key) if key else None
+    chromatica = key == "chromatica"
+    if request.method == "POST":
+        try:
+            name = "Chromatica" if chromatica else request.form.get("name", "").strip()
+            if not 1 <= len(name) <= 80:
+                raise ValueError("Enter a font family name up to 80 characters long.")
+            sources = [font_url(request.form.get(field_name, "").strip()) for field_name, *_ in STYLES]
+            if not chromatica and not sources[0]:
+                raise ValueError("Add a Regular WOFF2 URL for this family.")
+            if entry:
+                run("""UPDATE trust_font SET name=?,regular=?,medium=?,italic=?,medium_italic=? WHERE key=?""",
+                    name, *sources, key)
+            else:
+                run("INSERT INTO trust_font(key,name,regular,medium,italic,medium_italic) VALUES (?,?,?,?,?,?)",
+                    uuid.uuid4().hex, name, *sources)
+            flash("Webfont saved. Select the family in Portal settings to use it.")
+            return redirect(url_for("manage.fonts"))
+        except ValueError as error:
+            flash(str(error))
+        except sqlite3.IntegrityError:
+            flash("A font family with that name already exists.")
+    fields = [] if chromatica else [field("name", "Font family name", required=True, maximum=80)]
+    fields += [field(field_name, label + " WOFF2 URL", "url", maximum=2000,
+                     required=field_name == "regular" and not chromatica)
+               for field_name, label, *_ in STYLES]
+    return form("Edit webfont" if entry else "Add a webfont", "font_form", fields,
+                values=dict(entry) if entry else {}, label="Save webfont")

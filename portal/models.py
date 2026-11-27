@@ -18,7 +18,7 @@ BRANDING = {
     "logo_url": "",
     "accent": CORAL,
     "ink": BURGUNDY,
-    "font": "sans",
+    "font": "chromatica",
     "access_inbox": "",
     "show_demo_team": False,
 }
