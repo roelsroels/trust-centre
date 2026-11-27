@@ -89,6 +89,7 @@ dialog::backdrop { background: #3f0123b3; }
 .checkbox { display: flex; align-items: center; gap: .6rem; font-weight: 650; }
 .checkbox input { width: 1.2rem; height: 1.2rem; accent-color: var(--accent); }
 .footer { padding-block: 1.4rem; background: var(--grey-light); border-top: 1px solid var(--grey-medium); font-size: .9rem; }
+.footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem; }
 .skip { position: absolute; inset: .5rem auto auto .5rem; transform: translateY(-150%); background: white; z-index: 2; padding: .5rem; }
 .skip:focus { transform: none; }
 .team-profiles {

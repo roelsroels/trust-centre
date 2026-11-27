@@ -33,6 +33,11 @@
     {% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
     {% block content %}{% endblock %}
   </main>
-  <footer class="footer"><div class="wrap">{{ brand.name }}</div></footer>
+  <footer class="footer">
+    <div class="wrap">
+      <span>{{ brand.name }}</span>
+      <a href="https://github.com/roelsroels/trust-centre">Source code on GitHub</a>
+    </div>
+  </footer>
 </body>
 </html>
