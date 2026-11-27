@@ -2,8 +2,11 @@ import base64
 import hashlib
 import io
 import re
+import smtplib
 import tempfile
 import unittest
+from email import policy
+from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -16,6 +19,7 @@ from .db import initialize, now, one, rows, run
 from .services import send
 
 PASSWORD = "temporary-test-password"
+send_message = smtplib.SMTP.send_message
 
 
 class PortalFlows(unittest.TestCase):
@@ -168,16 +172,60 @@ class PortalFlows(unittest.TestCase):
         response = self.post("/account/login/", {"username": "reader", "password": password})
         self.assertEqual(response.status_code, 302)
 
-    def test_smtp_messages_have_origination_headers(self):
+    def test_smtp_message_wire_format(self):
+        self.app.config.update(MAIL_CONSOLE=False, SMTP_SSL=False,
+                               FROM_EMAIL="Équipe conformité <trust@example.com>")
+        subject = ("Révision disponible " * 15).rstrip()
+        body = "Résumé : accès à la dernière version. " * 40
+        with self.app.app_context(), patch("portal.services.smtplib.SMTP") as smtp:
+            relay = smtp.return_value.__enter__.return_value
+            relay.has_extn.return_value = False
+            relay.send_message.side_effect = lambda *args, **kwargs: send_message(relay, *args, **kwargs)
+            send("reader@bücher.example", subject, body)
+            send("reader@bücher.example", "Document updated", "Example body")
+            first, second = (call.args for call in relay.sendmail.call_args_list)
+
+        envelope_from, recipients, wire = first[:3]
+        self.assertEqual(envelope_from, "trust@example.com")
+        self.assertEqual(recipients, ["reader@xn--bcher-kva.example"])
+        self.assertTrue(wire.isascii())
+        self.assertNotRegex(wire, rb"(?<!\r)\n|\r(?!\n)")
+        headers, payload = wire.split(b"\r\n\r\n", 1)
+        self.assertTrue(all(len(line) <= 78 for line in headers.split(b"\r\n")))
+        self.assertTrue(all(len(line) <= 76 for line in payload.split(b"\r\n")))
+        parser = BytesParser(policy=policy.default)
+        message = parser.parsebytes(wire)
+        self.assertFalse(message.defects)
+        self.assertEqual(parsedate_to_datetime(message["Date"]).utcoffset().total_seconds(), 0)
+        self.assertRegex(message["Message-ID"], r"^<[^@]+@[^>]+>$")
+        self.assertNotEqual(message["Message-ID"], parser.parsebytes(second[2])["Message-ID"])
+        self.assertEqual(message["From"].addresses[0].display_name, "Équipe conformité")
+        self.assertEqual(message["Subject"], subject)
+        self.assertEqual(message["MIME-Version"], "1.0")
+        self.assertEqual(message.get_content_charset(), "utf-8")
+        self.assertEqual(message["Content-Transfer-Encoding"], "base64")
+        self.assertEqual(message.get_content().rstrip("\r\n"), body)
+
+    def test_smtp_negotiates_international_mailboxes(self):
         self.app.config.update(MAIL_CONSOLE=False, SMTP_SSL=False)
         with self.app.app_context(), patch("portal.services.smtplib.SMTP") as smtp:
             relay = smtp.return_value.__enter__.return_value
-            send("reader@example.com", "Reset your password", "Example body")
-            send("reader@example.com", "Document updated", "Example body")
-            first, second = (call.args[0] for call in relay.send_message.call_args_list)
-        self.assertEqual(parsedate_to_datetime(first["Date"]).utcoffset().total_seconds(), 0)
-        self.assertRegex(first["Message-ID"], r"^<[^@]+@[^>]+>$")
-        self.assertNotEqual(first["Message-ID"], second["Message-ID"])
+            relay.has_extn.side_effect = lambda name: name.lower() == "smtputf8"
+            relay.send_message.side_effect = lambda *args, **kwargs: send_message(relay, *args, **kwargs)
+            send("δοκιμή@example.com", "Test", "Example body")
+            self.assertIn("SMTPUTF8", relay.sendmail.call_args.args[3])
+            relay.has_extn.side_effect = None
+            relay.has_extn.return_value = False
+            with self.assertRaises(smtplib.SMTPNotSupportedError):
+                send("δοκιμή@example.com", "Test", "Example body")
+            self.assertEqual(relay.sendmail.call_count, 1)
+
+    def test_smtp_rejects_invalid_envelope_addresses(self):
+        self.app.config.update(MAIL_CONSOLE=False, SMTP_SSL=False, FROM_EMAIL="trust")
+        with self.app.app_context(), patch("portal.services.smtplib.SMTP") as smtp:
+            with self.assertRaises(ValueError):
+                send("reader@example.com", "Test", "Example body")
+            smtp.assert_not_called()
 
     def test_csv_confirmation_and_publish_notifications(self):
         self.sign_in("admin", staff=True)

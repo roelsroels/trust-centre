@@ -3,6 +3,9 @@ import ssl
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from email import policy
+from email.errors import NonASCIILocalPartDefect
+from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import format_datetime, make_msgid
 from urllib.parse import urlsplit
@@ -102,13 +105,27 @@ def publish(doc, revision):
 
 def send(email, subject, body):
     config = current_app.config
-    message = EmailMessage()
+    message = EmailMessage(policy=policy.SMTP)
     message["From"] = config["FROM_EMAIL"]
     message["To"] = email
+    for field in ("From", "To"):
+        header = message[field]
+        if len(header.addresses) != 1 or any(
+            not isinstance(defect, NonASCIILocalPartDefect) for defect in header.defects
+        ):
+            raise ValueError(f"{field} must contain a single valid mailbox.")
+        address = header.addresses[0]
+        if not address.username or not address.domain:
+            raise ValueError(f"{field} must contain a complete email address.")
+        # International domain names can use their ASCII representation over SMTP.
+        message.replace_header(field, Address(
+            display_name=address.display_name, username=address.username, domain=address.domain.encode("idna").decode(),
+        ))
     message["Subject"] = subject
     message["Date"] = format_datetime(datetime.now(timezone.utc))
-    message["Message-ID"] = make_msgid(domain=urlsplit(config["BASE_URL"]).hostname)
-    message.set_content(body)
+    host = urlsplit(config["BASE_URL"]).hostname.encode("idna").decode()
+    message["Message-ID"] = make_msgid(domain=host)
+    message.set_content(body, charset="utf-8", cte="base64")
     if config["MAIL_CONSOLE"]:
         print(message, flush=True)
         return
@@ -120,7 +137,10 @@ def send(email, subject, body):
             connection.starttls(context=tls)
         if config["SMTP_USER"] or config["SMTP_PASSWORD"]:
             connection.login(config["SMTP_USER"], config["SMTP_PASSWORD"])
-        connection.send_message(message)
+        connection.send_message(
+            message, from_addr=message["From"].addresses[0].addr_spec,
+            to_addrs=[message["To"].addresses[0].addr_spec],
+        )
 
 
 def process_mail(watch):
