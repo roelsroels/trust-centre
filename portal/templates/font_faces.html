@@ -1,0 +1,13 @@
+  {% if font_faces %}
+  <style>
+    {% for face in font_faces %}
+    @font-face {
+      font-family: "Portal Webfont";
+      src: {% if face.url %}url("{{ face.url|safe }}") format("woff2"){% if face.local %}, {% endif %}{% endif %}{% if face.local %}local("{{ face.local }}"){% endif %};
+      font-weight: {{ face.weight }};
+      font-style: {{ face.style }};
+      font-display: swap;
+    }
+    {% endfor %}
+  </style>
+  {% endif %}

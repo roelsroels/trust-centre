@@ -4,15 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ subject }}</title>
+  {% include "font_faces.html" %}
 </head>
-<body style="margin:0;padding:0;background:#F4F4F5;font-family:Arial,Helvetica,sans-serif;color:{{ ink }};">
+<body style="margin:0;padding:0;background:#F4F4F5;font-family:{{ font_family }};color:{{ ink }};">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F4F4F5;">
     <tr>
       <td align="center" style="padding:28px 12px;">
         <!--[if mso]><table role="presentation" width="600" border="0" cellpadding="0" cellspacing="0"><tr><td><![endif]-->
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background:#FFFFFF;border-radius:18px;overflow:hidden;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background:#FFFFFF;font-family:{{ font_family }};border-radius:18px;overflow:hidden;">
           <tr>
-            <td bgcolor="#3F0123" style="padding:23px 30px;background:#3F0123;color:#FFFFFF;">
+            <td bgcolor="{{ ink }}" style="padding:23px 30px;background:{{ ink }};color:{{ on_ink }};">
               {% if logo_url %}
               <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                 <tr>
@@ -30,15 +31,15 @@
           </tr>
           <tr>
             <td style="padding:28px 30px 16px;">
-              <h1 style="margin:0 0 20px;color:{{ ink }};font-size:28px;font-weight:normal;line-height:1.2;">{{ subject }}</h1>
+              <h1 style="margin:0 0 20px;color:{{ ink }};font-size:28px;font-weight:400;{% if chromatica %}line-height:1;letter-spacing:.05em;{% else %}line-height:1.2;{% endif %}">{{ subject }}</h1>
               {% for block in blocks %}
                 {% if block.url and block.secondary %}
-                  <p style="margin:0 0 16px;font-size:14px;line-height:1.5;"><a href="{{ block.url }}" style="color:#521A39;text-decoration:underline;">{{ block.label }}</a></p>
+                  <p style="margin:0 0 16px;font-size:14px;line-height:1.5;"><a href="{{ block.url }}" style="color:{{ ink }};text-decoration:underline;">{{ block.label }}</a></p>
                 {% elif block.url %}
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 20px;">
                     <tr>
                       <td bgcolor="{{ accent }}" style="background:{{ accent }};padding:12px 18px;border-radius:8px;">
-                        <a href="{{ block.url }}" style="display:inline-block;color:{{ on_accent }};font-size:15px;font-weight:bold;line-height:1.2;text-decoration:underline;">{{ block.label }}</a>
+                        <a href="{{ block.url }}" style="display:inline-block;color:{{ on_accent }};font-family:{{ font_family }};font-size:15px;font-weight:500;line-height:1.2;{% if chromatica %}letter-spacing:.05em;{% endif %}text-decoration:underline;">{{ block.label }}</a>
                       </td>
                     </tr>
                   </table>
@@ -49,8 +50,8 @@
             </td>
           </tr>
           <tr>
-            <td bgcolor="#D9E8FF" style="padding:16px 30px;background:#D9E8FF;color:#3F0123;font-size:14px;line-height:1.4;">
-              <a href="{{ home }}" style="color:#3F0123;text-decoration:underline;">{{ brand.name }}</a>
+            <td bgcolor="#D9E8FF" style="padding:16px 30px;background:#D9E8FF;color:{{ ink }};font-size:14px;line-height:1.4;">
+              <a href="{{ home }}" style="color:{{ ink }};text-decoration:underline;">{{ brand.name }}</a>
             </td>
           </tr>
         </table>

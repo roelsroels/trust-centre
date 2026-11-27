@@ -4,7 +4,15 @@ from urllib.parse import urlsplit
 from flask import current_app
 
 from .db import one
+from .fonts import faces
 from .models import BRANDING, button_text
+
+SYSTEM_FONTS = {
+    "sans": "system-ui, Arial, Helvetica, sans-serif",
+    "serif": "Georgia, 'Times New Roman', serif",
+    "mono": "ui-monospace, 'Courier New', monospace",
+}
+WEBFONT_STACK = "'Portal Webfont', 'Century Gothic', 'Avenir Next', system-ui, Arial, sans-serif"
 
 LINK_LABELS = {
     "Confirm your subscription at ": "Confirm subscription",
@@ -44,8 +52,11 @@ def branded_email(subject, body):
         logo_url = brand["logo_url"] if logo.scheme == "https" and logo.hostname and not logo.username else ""
     except ValueError:
         logo_url = ""
+    font = brand["font"]
     template = current_app.jinja_env.get_template("email.html")
     return template.render(
         brand=brand, logo_url=logo_url, accent=accent, ink=ink, on_accent=button_text(accent),
+        on_ink=button_text(ink), font_faces=faces(font), font_family=SYSTEM_FONTS.get(font, WEBFONT_STACK),
+        chromatica=font == "chromatica",
         subject=subject, blocks=list(email_blocks(body)), home=current_app.config["BASE_URL"],
     )

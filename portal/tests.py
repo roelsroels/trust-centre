@@ -16,6 +16,7 @@ import pyotp
 from .app import create_app
 from .auth import signature
 from .db import initialize, now, one, rows, run
+from .email_content import branded_email
 from .services import send
 
 PASSWORD = "temporary-test-password"
@@ -230,6 +231,22 @@ class PortalFlows(unittest.TestCase):
         self.assertIn(f'href="{stop}"', html)
         self.assertIn("&lt;script&gt;", html)
         self.assertNotIn("<script>", html)
+
+    def test_email_follows_active_colours_and_fonts(self):
+        with self.app.app_context():
+            run("UPDATE portal_branding SET accent='#F6B67C',ink='#17234A',font='serif'")
+            email = branded_email("New report", "Example body")
+            self.assertIn("background:#17234A", email)
+            self.assertIn("font-family:Georgia", email)
+            self.assertNotIn("@font-face", email)
+            run("""INSERT INTO trust_font(key,name,regular,medium,italic,medium_italic)
+                   VALUES ('example','Example','https://fonts.example.com/regular.woff2',
+                           'https://fonts.example.com/medium.woff2','','')""")
+            run("UPDATE portal_branding SET font='example'")
+            email = branded_email("New report", "Example body")
+            self.assertIn("@font-face", email)
+            self.assertIn("https://fonts.example.com/medium.woff2", email)
+            self.assertIn("Portal Webfont", email)
 
     def test_smtp_negotiates_international_mailboxes(self):
         self.app.config.update(MAIL_CONSOLE=False, SMTP_SSL=False)

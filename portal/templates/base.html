@@ -7,19 +7,7 @@
   <title>{% block title %}Trust Centre{% endblock %} · {{ brand.name }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='portal.css') }}">
   <script src="{{ url_for('static', filename='dialog.js') }}" defer></script>
-  {% if font_faces %}
-  <style>
-    {% for face in font_faces %}
-    @font-face {
-      font-family: "Portal Webfont";
-      src: {% if face.url %}url("{{ face.url|safe }}") format("woff2"){% if face.local %}, {% endif %}{% endif %}{% if face.local %}local("{{ face.local }}"){% endif %};
-      font-weight: {{ face.weight }};
-      font-style: {{ face.style }};
-      font-display: swap;
-    }
-    {% endfor %}
-  </style>
-  {% endif %}
+  {% include "font_faces.html" %}
 </head>
 <body class="font-{{ font_class }}" style="--accent: {{ brand.accent }}; --ink: {{ brand.ink }}; --on-accent: {{ button_text }}">
   <a class="skip" href="#main">Skip to content</a>
