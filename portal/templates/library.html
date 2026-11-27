@@ -3,12 +3,12 @@
 {% block content %}
 <div class="page-heading">
   <h1>Document library</h1>
-  {% if user.is_authenticated and not user.is_staff %}<span class="pill">{{ user.get_tier_display }} access</span>{% endif %}
+  {% if user and not user.is_staff %}<span class="pill">{{ tiers[user.tier] }} access</span>{% endif %}
 </div>
 <nav class="filters" aria-label="Document categories">
-  <a href="{% url 'library' %}" {% if not category %}aria-current="page"{% endif %}>All documents</a>
+  <a href="{{ url_for('public.library') }}" {% if not category %}aria-current="page"{% endif %}>All documents</a>
   {% for entry in categories %}
-  <a href="{% url 'library' %}?category={{ entry.name|urlencode }}" {% if entry == category %}aria-current="page"{% endif %}>{{ entry.name }}</a>
+  <a href="{{ url_for('public.library') }}?category={{ entry.name|urlencode }}" {% if entry.name == category %}aria-current="page"{% endif %}>{{ entry.name }}</a>
   {% endfor %}
 </nav>
 <div class="documents">
@@ -18,14 +18,14 @@
       <span class="category-label">{{ item.category }}</span>
       <h2>{{ item.title }}</h2>
       <p>{{ item.teaser }}</p>
-      {% if not access %}<span class="pill">{{ item.get_minimum_tier_display }} required</span>{% endif %}
+      {% if not access %}<span class="pill">{{ tiers[item.minimum_tier] }} required</span>{% endif %}
     </div>
     {% if access %}
-      <a class="button" href="{% url 'document' item.pk %}">View document</a>
+      <a class="button" href="{{ url_for('public.document_page', pk=item.id) }}">View document</a>
     {% else %}
-      <a class="button outline" href="{% url 'document' item.pk %}">Request access</a>
+      <a class="button outline" href="{{ url_for('public.document_page', pk=item.id) }}">Request access</a>
     {% endif %}
   </article>
-  {% empty %}<p class="panel">No documents have been published here yet.</p>{% endfor %}
+  {% else %}<p class="panel">No documents have been published here yet.</p>{% endfor %}
 </div>
 {% endblock %}

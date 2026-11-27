@@ -1,29 +1,29 @@
-{% load static %}
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Trust Centre{% endblock %} · {{ brand.name }}</title>
-  <link rel="stylesheet" href="{% static 'portal.css' %}">
-  <script src="{% static 'dialog.js' %}" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='portal.css') }}">
+  <script src="{{ url_for('static', filename='dialog.js') }}" defer></script>
 </head>
 <body class="font-{{ brand.font }}" style="--accent: {{ brand.accent }}; --ink: {{ brand.ink }}">
   <a class="skip" href="#main">Skip to content</a>
   <header class="masthead">
     <div class="wrap navigation">
-      <a class="wordmark" href="{% url 'home' %}">
+      <a class="wordmark" href="{{ url_for('public.home') }}">
         {% if brand.logo_url %}<img src="{{ brand.logo_url }}" alt="">{% else %}<span class="mark" aria-hidden="true"></span>{% endif %}
         {{ brand.name }}
       </a>
       <nav aria-label="Main">
-        <a href="{% url 'library' %}">Documents</a>
-        {% if user.is_authenticated %}
-          <a href="{% url 'notifications' %}">Email updates</a>
-          {% if user.is_staff %}<a href="{% url 'manage:index' %}">Admin</a>{% endif %}
-          <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="outline" type="submit">Sign out</button></form>
+        <a href="{{ url_for('public.library') }}">Documents</a>
+        {% if user %}
+          <a href="{{ url_for('public.notifications') }}">Email updates</a>
+          {% if user.is_staff %}<a href="{{ url_for('manage.index') }}">Manage</a>{% endif %}
+          <form method="post" action="{{ url_for('auth.logout') }}">{{ csrf() }}<button class="outline" type="submit">Sign out</button></form>
         {% else %}
-          <a class="button outline" href="{% url 'login' %}">Sign in</a>
+          <a class="button outline" href="{{ url_for('auth.login') }}">Sign in</a>
         {% endif %}
       </nav>
     </div>

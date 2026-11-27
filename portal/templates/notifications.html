@@ -7,11 +7,11 @@
   <p><strong>{{ user.email }}</strong></p>
   {% if subscriber.status == 'active' %}
     <p>You're subscribed.</p>
-    <a class="button outline" href="{% url 'subscription' subscriber.token %}">Manage subscription</a>
+    <a class="button outline" href="{{ url_for('public.subscription', token=subscriber.token) }}">Manage subscription</a>
   {% elif subscriber.status == 'pending' %}
     <p>Check your inbox for the confirmation email.</p>
   {% else %}
-    <form method="post">{% csrf_token %}<button type="submit">Send confirmation email</button></form>
+    <form method="post">{{ csrf() }}<button type="submit">Send confirmation email</button></form>
   {% endif %}
 </section>
 {% endblock %}

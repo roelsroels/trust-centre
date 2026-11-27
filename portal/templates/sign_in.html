@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>{{ 'Management sign-in' if admin else 'Sign in' }}</h1>
+  {% if admin %}<p>Enter your password and the current code from your authenticator.</p>{% endif %}
+  <form class="stack" method="post">{{ csrf() }}
+    <input type="hidden" name="next" value="{{ target }}">
+    <p><label for="username">Username</label><input id="username" name="username" autocomplete="username" required></p>
+    <p><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></p>
+    {% if admin %}<p><label for="otp">Authenticator code</label><input id="otp" name="otp" inputmode="numeric" autocomplete="one-time-code" required></p>{% endif %}
+    <button type="submit">Sign in</button>
+  </form>
+  <p><a href="{{ url_for('auth.reset') }}">Forgot your password?</a></p>
+</section>
+{% endblock %}

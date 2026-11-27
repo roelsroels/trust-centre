@@ -8,7 +8,7 @@
   {% else %}
     <p>Unsubscribe from Trust Centre document updates.</p>
   {% endif %}
-  <form method="post" class="actions">{% csrf_token %}
+  <form method="post" class="actions">{{ csrf() }}
     {% if subscriber.status == 'pending' %}<button name="action" value="confirm">Confirm subscription</button>{% endif %}
     <button class="outline" name="action" value="off">Unsubscribe</button>
   </form>

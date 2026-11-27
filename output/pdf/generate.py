@@ -1,6 +1,5 @@
 """Regenerate example assets from the project root with ReportLab installed."""
 
-import os
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -9,12 +8,6 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph
 from xml.sax.saxutils import escape
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portal.settings")
-
-import django
-
-django.setup()
 
 from portal.demo.catalog import COMPANY, SAMPLES
 

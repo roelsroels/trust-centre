@@ -93,3 +93,26 @@ dialog::backdrop { background: #10263bb3; }
 .profile p { margin: .25rem 0 0; }
 .profile .role { color: var(--accent); font-weight: 650; }
 .demo-note { grid-column: 1 / -1; color: #506477; font-size: .875rem; }
+.preserve-lines { white-space: pre-line; }
+.management-nav { margin-top: 0; }
+.manage-heading { margin-bottom: 1.2rem; }
+.manage-cards .category { min-height: 7.1rem; align-content: center; }
+.form-panel { max-width: 46rem; }
+.manage-form { display: grid; gap: 1rem; }
+.panel > .manage-form { margin: 0; }
+.manage-form label { display: block; font-weight: 650; }
+.manage-form input:not([type=checkbox]), .manage-form select, .manage-form textarea {
+  display: block; width: 100%; min-height: 2.65rem; margin-top: .3rem;
+  border: 1px solid #94a7b2; border-radius: .4rem; padding: .45rem .65rem;
+  background: white; color: var(--ink); font: inherit;
+}
+.manage-form input[type=color] { width: 5rem; }
+.manage-form label.checkbox { display: flex; }
+.form-field small { display: block; color: #506477; margin-top: .25rem; }
+.management-list { list-style: none; padding: 0; margin: 0; }
+.management-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .65rem 1rem; padding: .8rem 0; }
+.management-list li + li { border-top: 1px solid #dce5e8; }
+.management-list li .metadata { display: block; overflow-wrap: anywhere; }
+.history .manage-form { margin-top: 1rem; }
+.manage-search { margin: 0 0 .6rem; }
+.manage-search input { padding: .5rem; border: 1px solid #94a7b2; border-radius: .4rem; font: inherit; max-width: 100%; }

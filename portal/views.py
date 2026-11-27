@@ -1,167 +1,163 @@
 import hashlib
 import uuid
 
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.db import transaction
-from django.http import FileResponse, Http404, HttpResponseForbidden
-from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_POST, require_safe
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, send_file, url_for
 
+from .db import now, one, rows, run, write
 from .demo.team import TEAM
-from .models import Acceptance, AccessRequest, Branding, Category, Document, OutgoingMail, Revision, Subscriber
-from .services import invite, url
+from .models import BRANDING, TIERS
+from .services import absolute, enqueue, invite, private_file
+
+public = Blueprint("public", __name__)
 
 
-def branding(request):
-    return {"brand": Branding.objects.first() or Branding()}
+def branding():
+    return one("SELECT * FROM portal_branding ORDER BY id LIMIT 1") or BRANDING
 
 
-@require_safe
-def home(request):
-    context = branding(request)
-    context["categories"] = Category.objects.all()
-    context["demo_team"] = TEAM if context["brand"].show_demo_team else ()
-    return render(request, "home.html", context)
+def document(pk):
+    item = one("""SELECT d.*,c.name AS category FROM portal_document d JOIN portal_category c ON c.id=d.category_id
+                  WHERE d.id=? AND d.current_id IS NOT NULL""", pk)
+    if not item:
+        abort(404)
+    return item
 
 
-def allowed(user, document):
-    return user.is_authenticated and (
-        user.tier >= document.minimum_tier or (user.is_staff and user.is_verified())
-    )
+def allowed(doc):
+    return bool(g.user and (g.staff or g.user["tier"] >= doc["minimum_tier"]))
 
 
-@never_cache
-@require_safe
-def library(request):
-    categories = Category.objects.all()
-    category = None
-    documents = Document.objects.filter(current__isnull=False).select_related("category")
-    if request.GET.get("category"):
-        category = get_object_or_404(categories, name=request.GET["category"])
-        documents = documents.filter(category=category)
-    return render(request, "library.html", {
-        "categories": categories, "category": category,
-        "rows": [(doc, allowed(request.user, doc)) for doc in documents.order_by("category__name", "title")],
-    })
+def digest(doc):
+    return hashlib.sha256(doc["agreement"].encode()).hexdigest()
 
 
-def agreement_digest(document):
-    return hashlib.sha256(document.agreement.encode()).hexdigest()
+def accepted(doc):
+    return not doc["agreement"] or one(
+        "SELECT id FROM portal_acceptance WHERE user_id=? AND document_id=? AND digest=?",
+        g.user["id"], doc["id"], digest(doc))
 
 
-def accepted(user, document):
-    return not document.agreement or Acceptance.objects.filter(
-        user=user, document=document, digest=agreement_digest(document),
-    ).exists()
+@public.get("/")
+def home():
+    return render_template("home.html", categories=rows("SELECT * FROM portal_category ORDER BY name"),
+                           demo_team=TEAM if branding()["show_demo_team"] else ())
 
 
-def published_document(pk):
-    return get_object_or_404(Document.objects.select_related("current", "category"), pk=pk, current__isnull=False)
+@public.get("/library/")
+def library():
+    name = request.args.get("category")
+    categories = rows("SELECT * FROM portal_category ORDER BY name")
+    if name and not any(category["name"] == name for category in categories):
+        abort(404)
+    docs = rows("""SELECT d.*,c.name AS category FROM portal_document d JOIN portal_category c ON c.id=d.category_id
+                   WHERE d.current_id IS NOT NULL AND (? IS NULL OR c.name=?) ORDER BY c.name,d.title""", name, name)
+    return render_template("library.html", categories=categories, category=name,
+                           rows=[(doc, allowed(doc)) for doc in docs])
 
 
-@never_cache
-@require_safe
-def document_page(request, pk):
-    document = published_document(pk)
-    access = allowed(request.user, document)
-    has_agreement = access and accepted(request.user, document)
-    return render(request, "document.html", {
-        "item": document, "access": access, "accepted": has_agreement,
-        "digest": agreement_digest(document) if access else "",
-        "versions": list(document.revisions.filter(published__isnull=False).exclude(pk=document.current_id))
-        if has_agreement else [],
-    })
+@public.get("/documents/<int:pk>/")
+def document_page(pk):
+    doc = document(pk)
+    access = allowed(doc)
+    agreed = access and bool(accepted(doc))
+    current = one("SELECT * FROM portal_revision WHERE id=?", doc["current_id"]) if agreed else None
+    versions = rows("""SELECT * FROM portal_revision WHERE document_id=? AND published IS NOT NULL AND id<>?
+                       ORDER BY published DESC,id DESC""", pk, doc["current_id"]) if agreed else []
+    return render_template("document.html", item=doc, current=current, versions=versions,
+                           access=access, accepted=agreed, digest=digest(doc) if access else "")
 
 
-@never_cache
-@login_required
-@require_POST
-@transaction.atomic
-def accept_agreement(request, pk):
-    document = published_document(pk)
-    if not allowed(request.user, document):
-        return HttpResponseForbidden()
-    digest = agreement_digest(document)
-    if document.agreement and request.POST.get("agree") == "yes" and request.POST.get("digest") == digest:
-        Acceptance.objects.get_or_create(
-            user=request.user, document=document, digest=digest, defaults={"text": document.agreement},
-        )
-    else:
-        messages.error(request, "Review and confirm the current agreement.")
-    return redirect("document", pk)
+@public.post("/documents/<int:pk>/agreement/")
+def accept(pk):
+    with write():
+        doc = document(pk)
+        if not allowed(doc):
+            abort(403)
+        signature = digest(doc)
+        if doc["agreement"] and request.form.get("agree") == "yes" and request.form.get("digest") == signature:
+            run("""INSERT OR IGNORE INTO portal_acceptance(user_id,document_id,digest,text,accepted)
+                   VALUES (?,?,?,?,?)""", g.user["id"], pk, signature, doc["agreement"], now())
+        else:
+            flash("Review and confirm the current agreement.")
+    return redirect(url_for("public.document_page", pk=pk))
 
 
-@never_cache
-@login_required
-@require_safe
-def download(request, pk, revision):
-    document = published_document(pk)
-    if not allowed(request.user, document) or not accepted(request.user, document):
-        return HttpResponseForbidden()
-    item = get_object_or_404(Revision, pk=revision, document=document, published__isnull=False)
+@public.get("/documents/<int:pk>/files/<int:revision>/")
+def download(pk, revision):
+    doc = document(pk)
+    if not g.user:
+        return redirect(url_for("auth.login", next=request.path))
+    if not allowed(doc) or not accepted(doc):
+        abort(403)
+    item = one("SELECT * FROM portal_revision WHERE id=? AND document_id=? AND published IS NOT NULL", revision, pk)
+    if not item:
+        abort(404)
+    return serve_pdf(item["file"], doc["title"], inline=request.args.get("view") == "1")
+
+
+def serve_pdf(name, title, *, inline):
+    path = private_file(name)
     try:
-        pdf = item.file.open("rb")
-    except FileNotFoundError as exc:
-        raise Http404 from exc
-    response = FileResponse(pdf, as_attachment=request.GET.get("view") != "1",
-                            filename=f"{document.title}.pdf", content_type="application/pdf")
-    response["Content-Security-Policy"] = "sandbox; default-src 'none'"
+        response = send_file(path, mimetype="application/pdf", download_name=title + ".pdf",
+                             as_attachment=not inline, etag=False)
+    except FileNotFoundError:
+        abort(404)
+    response.headers["Content-Security-Policy"] = "sandbox; default-src 'none'"
     return response
 
 
-@never_cache
-@login_required
-@require_POST
-@transaction.atomic
-def request_access(request, pk):
-    document = published_document(pk)
-    if allowed(request.user, document):
-        return redirect("document", pk)
-    brand = branding(request)["brand"]
-    if not brand.access_inbox:
-        messages.error(request, "Access requests are currently unavailable.")
-    else:
-        _, created = AccessRequest.objects.get_or_create(
-            user=request.user, document=document, tier=document.minimum_tier, handled=None,
-        )
-        if created:
-            OutgoingMail.objects.create(
-                email=brand.access_inbox, subject="Trust Centre access request",
-                body=f"{request.user.get_username()} ({request.user.email}) requested "
-                     f"{document.get_minimum_tier_display()} access for {document.title}.\n\n{url('document', pk)}",
-            )
-        messages.success(request, "Your access request has been submitted.")
-    return redirect("document", pk)
+@public.post("/documents/<int:pk>/request/")
+def request_access(pk):
+    if not g.user:
+        abort(403)
+    with write():
+        doc = document(pk)
+        if allowed(doc):
+            return redirect(url_for("public.document_page", pk=pk))
+        inbox = branding()["access_inbox"]
+        if not inbox:
+            flash("Access requests are currently unavailable.")
+        else:
+            created = run("""INSERT OR IGNORE INTO portal_accessrequest(user_id,document_id,tier,requested,handled)
+                             VALUES (?,?,?,?,NULL)""", g.user["id"], pk, doc["minimum_tier"], now()).rowcount
+            if created:
+                enqueue(inbox, "Trust Centre access request",
+                        f"{g.user['username']} ({g.user['email']}) requested {TIERS[doc['minimum_tier']]} access "
+                        f"for {doc['title']}.\n\n{absolute(url_for('public.document_page', pk=pk))}")
+            flash("Your access request has been submitted.")
+    return redirect(url_for("public.document_page", pk=pk))
 
 
-@never_cache
-@login_required
-def notifications(request):
-    email = request.user.email.strip().lower()
-    subscriber = Subscriber.objects.filter(email=email).first()
+@public.route("/notifications/", methods=["GET", "POST"])
+def notifications():
+    if not g.user:
+        return redirect(url_for("auth.login", next=request.path))
+    email = g.user["email"].strip().lower()
     if request.method == "POST":
-        invite(email, manual=True)
-        messages.success(request, "If confirmation is needed, we’ll send a link to your email.")
-        return redirect("notifications")
-    return render(request, "notifications.html", {"subscriber": subscriber})
+        with write():
+            invite(email, manual=True)
+        flash("If confirmation is needed, we’ll send a link to your email.")
+        return redirect(url_for("public.notifications"))
+    subscriber = one("SELECT * FROM portal_subscriber WHERE email=?", email)
+    return render_template("notifications.html", subscriber=subscriber)
 
 
-@never_cache
-@transaction.atomic
-def subscription(request, token):
-    subscriber = get_object_or_404(Subscriber, token=token)
+@public.route("/subscription/<uuid:token>/", methods=["GET", "POST"])
+def subscription(token):
+    subscriber = one("SELECT * FROM portal_subscriber WHERE token=?", token.hex)
+    if not subscriber:
+        abort(404)
     if request.method == "POST":
-        action = request.POST.get("action")
-        if action == "confirm" and subscriber.status == "pending":
-            subscriber.status = "active"
-            subscriber.save()
-            messages.success(request, "You’re subscribed to document updates.")
+        action = request.form.get("action")
+        if action == "confirm":
+            changed = run("UPDATE portal_subscriber SET status='active',changed=? WHERE token=? AND status='pending'",
+                          now(), token.hex).rowcount
+            if changed:
+                flash("You’re subscribed to document updates.")
         elif action == "off":
-            subscriber.status = "off"
-            subscriber.token = uuid.uuid4()
-            subscriber.save()
-            messages.success(request, "You’ve unsubscribed from document updates.")
-        return redirect("home")
-    return render(request, "subscription.html", {"subscriber": subscriber})
+            changed = run("UPDATE portal_subscriber SET status='off',token=?,changed=? WHERE token=?",
+                          uuid.uuid4().hex, now(), token.hex).rowcount
+            if changed:
+                flash("You’ve unsubscribed from document updates.")
+        return redirect("/")
+    return render_template("subscription.html", subscriber=subscriber)

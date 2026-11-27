@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-import os
-import sys
+from flask.cli import FlaskGroup
 
-from django.core.management import execute_from_command_line
+from portal.app import create_app
+
 
 if __name__ == "__main__":
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "portal.settings")
-    execute_from_command_line(sys.argv)
+    FlaskGroup(create_app=create_app)()

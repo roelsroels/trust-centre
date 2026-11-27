@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Reset password{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>{{ 'Choose a password' if confirm else 'Reset password' }}</h1>
+  {% if not valid %}
+    <p>This link has expired or already been used.</p><a href="{{ url_for('auth.reset') }}">Request a fresh link</a>
+  {% else %}
+    <form class="stack" method="post">{{ csrf() }}
+      {% if confirm %}
+        <p><label for="password">New password</label><input id="password" type="password" name="password" minlength="12" required autocomplete="new-password"></p>
+        <p><label for="confirmation">Confirm password</label><input id="confirmation" type="password" name="confirmation" minlength="12" required autocomplete="new-password"></p>
+      {% else %}
+        <p><label for="email">Email address</label><input id="email" type="email" name="email" required autocomplete="email"></p>
+      {% endif %}
+      <button type="submit">{{ 'Save password' if confirm else 'Send reset link' }}</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

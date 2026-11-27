@@ -1,143 +1,163 @@
-from tempfile import TemporaryDirectory
+import base64
+import hashlib
+import io
+import re
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
 
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.core.management import call_command
-from django.core import mail
-from django.test import TestCase, override_settings
-from django.urls import reverse
-from django_otp import DEVICE_ID_SESSION_KEY
-from django_otp.oath import TOTP
-from django_otp.plugins.otp_totp.models import TOTPDevice
+import pyotp
 
-from .models import Account, Branding, Category, Document, OutgoingMail, Revision, Subscriber, Tier
+from .app import create_app
+from .db import initialize, now, one, rows, run
+
+PASSWORD = "temporary-test-password"
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
-class PortalFlows(TestCase):
+class PortalFlows(unittest.TestCase):
     def setUp(self):
-        private = TemporaryDirectory()
-        self.addCleanup(private.cleanup)
-        self.enterContext(override_settings(MEDIA_ROOT=private.name, SECURE_SSL_REDIRECT=False))
-        self.password = "private-test-password-24"
-        self.owner = Account.objects.create_superuser("owner", "owner@example.com", self.password)
-        self.admin = Account.objects.create_user("admin", "admin@example.com", self.password, is_staff=True)
-        self.customer = Account.objects.create_user("reader", "reader@example.com", self.password)
-        self.category = Category.objects.get(name="Reports")
-        Branding.objects.create(access_inbox="compliance@example.com")
+        data = self.enterContext(tempfile.TemporaryDirectory())
+        self.app = create_app(TESTING=True, LOCAL=True, DATA_DIR=Path(data), SECRET_KEY="fixture-key",
+                              SESSION_COOKIE_SECURE=False, TRUSTED_HOSTS=["localhost"])
+        with self.app.app_context():
+            initialize()
+            self.admin = self.account("admin", staff=True)
+            self.owner = self.account("owner", staff=True, owner=True)
+            self.reader = self.account("reader")
+            self.category = one("SELECT id FROM portal_category WHERE name='Reports'")["id"]
+            run("""INSERT INTO portal_branding(name,introduction,team,logo_url,accent,ink,font,access_inbox,show_demo_team)
+                   VALUES ('Trust Centre','','','','#076e65','#132a42','sans','compliance@example.com',0)""")
+        self.client = self.app.test_client()
 
-    def sign_in_admin(self, user):
-        self.client.logout()
-        device = TOTPDevice.objects.create(user=user)
-        response = self.client.post(reverse("manage:login"), {
-            "username": user.username, "password": self.password,
-            "otp_device": device.persistent_id, "otp_token": str(TOTP(device.bin_key).token()).zfill(6),
+    def account(self, username, staff=False, owner=False):
+        salt = "test-salt"
+        legacy = hashlib.pbkdf2_hmac("sha256", PASSWORD.encode(), salt.encode(), 4000)
+        encoded = f"pbkdf2_sha256$4000${salt}${base64.b64encode(legacy).decode()}"
+        identifier = run("""INSERT INTO portal_account(username,email,password,tier,is_staff,is_active,is_superuser,
+                            first_name,last_name,date_joined) VALUES (?,?,?,10,?,1,?,'','',?)""",
+                         username, f"{username}@example.com", encoded, staff, owner, now()).lastrowid
+        if staff:
+            key = hashlib.sha256(username.encode()).digest()[:20]
+            run("""INSERT INTO otp_totp_totpdevice(name,confirmed,key,step,t0,digits,tolerance,drift,last_t,user_id,
+                   throttling_failure_count) VALUES ('Authenticator',1,?,30,0,6,1,0,-1,?,0)""", key.hex(), identifier)
+        return identifier
+
+    def post(self, path, data=None, source=None):
+        form_page = self.client.get(source or path)
+        match = re.search(rb'name="csrf_token" value="([^"]+)"', form_page.data)
+        self.assertIsNotNone(match, f"No CSRF field at {source or path}: {form_page.status_code}")
+        return self.client.post(path, data={**(data or {}), "csrf_token": match.group(1).decode()})
+
+    def sign_in(self, username, staff=False):
+        path = "/manage/login/" if staff else "/account/login/"
+        fields = {"username": username, "password": PASSWORD}
+        if staff:
+            key = hashlib.sha256(username.encode()).digest()[:20]
+            fields["otp"] = pyotp.TOTP(base64.b32encode(key).decode()).now()
+        result = self.post(path, fields)
+        self.assertEqual(result.status_code, 302, result.data[:2600])
+
+    def upload(self):
+        response = self.post("/manage/documents/new/", {
+            "title": "Audit report", "teaser": "Scope of the audit.", "category_id": self.category,
+            "minimum_tier": 30, "retain_previous": 1, "agreement": "Keep this private.", "revision": "1.0",
+            "file": (io.BytesIO(b"%PDF-1.4\nreport"), "report.pdf"),
         })
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(self.client.session[DEVICE_ID_SESSION_KEY], device.persistent_id)
+        self.assertEqual(response.status_code, 302, response.data[:2600])
+        with self.app.app_context():
+            doc = one("SELECT * FROM portal_document")
+            revision = one("SELECT * FROM portal_revision")
+        return doc["id"], revision["id"]
 
-    def test_document_admin_upload_access_and_revision(self):
-        self.sign_in_admin(self.admin)
-        response = self.client.post(reverse("manage:portal_document_add"), {
-            "category": self.category.pk, "title": "Audit pack", "teaser": "Scope of the audit.",
-            "minimum_tier": Tier.PRO, "agreement": "Keep this confidential.", "retain_previous": 1,
-            "revisions-TOTAL_FORMS": 1, "revisions-INITIAL_FORMS": 0,
-            "revisions-0-label": "1.0",
-            "revisions-0-file": SimpleUploadedFile("report.pdf", b"%PDF-1.4\nfirst", "application/pdf"),
-        })
-        self.assertEqual(response.status_code, 302, response.content[:3000])
-        document = Document.objects.get()
-        revision = document.revisions.get()
-        page = reverse("document", args=[document.pk])
-        download = reverse("download", args=[document.pk, revision.pk])
-        self.assertEqual(self.client.get(page).status_code, 404)
-        self.assertContains(self.client.get(reverse("manage:portal_revision_change", args=[revision.pk])), "Publish or restore")
-        self.assertEqual(self.client.post(reverse("manage:revision_publish", args=[revision.pk])).status_code, 302)
-
-        self.client.force_login(self.customer)
-        self.assertContains(self.client.get(page), "Scope of the audit.")
-        self.assertNotContains(self.client.get(page), "Keep this confidential.")
+    def test_upload_publish_agreement_and_access_request(self):
+        self.sign_in("admin", staff=True)
+        self.assertIn(b"Access requests", self.client.get("/manage/").data)
+        doc, rev = self.upload()
+        path = f"/documents/{doc}/"
+        download = f"{path}files/{rev}/"
+        self.assertEqual(self.client.get(path).status_code, 404)
+        preview = f"/manage/documents/{doc}/versions/{rev}/preview/"
+        with self.client.get(preview) as pdf:
+            self.assertEqual(pdf.data, b"%PDF-1.4\nreport")
+        publish = f"/manage/documents/{doc}/versions/{rev}/publish/"
+        self.assertEqual(self.post(publish).status_code, 302)
+        self.sign_in("reader")
+        self.assertEqual(self.client.get(preview).status_code, 403)
+        self.assertIn(b"Expert required", self.client.get(path).data)
         self.assertEqual(self.client.get(download).status_code, 403)
         for _ in range(2):
-            self.client.post(reverse("request_access", args=[document.pk]))
-        self.assertEqual(OutgoingMail.objects.filter(email="compliance@example.com").count(), 1)
-
-        self.customer.tier = Tier.PRO
-        self.customer.save()
+            self.assertEqual(self.post(path + "request/", source=path).status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(len(rows("SELECT * FROM portal_outgoingmail")), 1)
+            run("UPDATE portal_account SET tier=30 WHERE id=?", self.reader)
         self.assertEqual(self.client.get(download).status_code, 403)
-        response = self.client.get(page)
-        self.assertContains(response, "Keep this confidential.")
-        digest = response.context["digest"]
-        self.client.post(reverse("accept", args=[document.pk]), {"agree": "yes", "digest": digest})
-        response = self.client.get(download)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("no-store", response["Cache-Control"])
-        self.assertEqual(b"".join(response.streaming_content), b"%PDF-1.4\nfirst")
-        document.agreement = "Revised terms."
-        document.save(update_fields=["agreement"])
-        self.client.post(reverse("accept", args=[document.pk]), {"agree": "yes", "digest": digest})
+        response = self.client.get(path)
+        digest = re.search(rb'name="digest" value="([^"]+)"', response.data).group(1).decode()
+        self.assertEqual(self.post(path + "agreement/", {"digest": digest, "agree": "yes"}, source=path).status_code, 302)
+        with self.client.get(download) as pdf:
+            self.assertEqual(pdf.data, b"%PDF-1.4\nreport")
+            self.assertEqual(pdf.headers["Cache-Control"], "no-store")
+        with self.app.app_context():
+            run("UPDATE portal_document SET agreement='Changed' WHERE id=?", doc)
         self.assertEqual(self.client.get(download).status_code, 403)
 
-        self.sign_in_admin(self.admin)
-        previous = revision
-        for label in ("2.0", "3.0"):
-            revision = Revision.objects.create(document=document, label=label, file=SimpleUploadedFile("report.pdf", b"%PDF-1.4"))
-            with self.captureOnCommitCallbacks(execute=True):
-                self.client.post(reverse("manage:revision_publish", args=[revision.pk]))
-        self.assertFalse(Revision.objects.filter(pk=previous.pk).exists())
-        self.assertFalse(previous.file.storage.exists(previous.file.name))
-        retained = document.revisions.exclude(pk=revision.pk).get()
-        self.client.post(reverse("manage:revision_publish", args=[retained.pk]))
-        document.refresh_from_db()
-        self.assertEqual(document.current, retained)
+    def test_staff_roles_mfa_and_csrf(self):
+        self.sign_in("admin")
+        self.assertIn("/manage/login/", self.client.get("/manage/").location)
+        self.sign_in("admin", staff=True)
+        self.assertEqual(self.client.get(f"/manage/accounts/{self.owner}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/manage/accounts/{self.admin}/").status_code, 404)
+        account = f"/manage/accounts/{self.reader}/"
+        self.assertEqual(self.client.post(account).status_code, 400)
+        self.assertNotIn(b'name="is_staff"', self.client.get(account).data)
+        data = {"username": "reader", "email": "reader@example.com", "tier": 20, "is_active": "on", "is_staff": "on"}
+        self.assertEqual(self.post(account, data).status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(one("SELECT is_staff,tier FROM portal_account WHERE id=?", self.reader)["is_staff"], 0)
+        self.sign_in("owner", staff=True)
+        self.assertIn(b'name="is_staff"', self.client.get(account).data)
+        self.assertEqual(self.post(account, data).status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(one("SELECT is_staff FROM portal_account WHERE id=?", self.reader)["is_staff"], 1)
 
-    def test_admin_cannot_promote_customers_or_modify_admins(self):
-        self.sign_in_admin(self.admin)
-        account_page = reverse("manage:portal_account_change", args=[self.customer.pk])
-        self.assertNotContains(self.client.get(account_page), 'name="is_staff"')
-        self.assertEqual(self.client.post(account_page, {
-            "username": self.customer.username, "email": self.customer.email, "tier": Tier.EXPERT,
-            "is_active": "on", "is_staff": "on", "is_superuser": "on",
-        }).status_code, 302)
-        self.customer.refresh_from_db()
-        self.assertFalse(self.customer.is_staff)
-        self.assertFalse(self.customer.is_superuser)
-        self.assertEqual(self.customer.tier, Tier.EXPERT)
-        for target in (self.admin, self.owner):
-            route = reverse("manage:auth_user_password_change", args=[target.pk])
-            self.assertIn(self.client.get(route).status_code, (302, 403, 404))
-        self.sign_in_admin(self.owner)
-        self.assertContains(self.client.get(account_page), 'name="is_staff"')
-
-    def test_confirmed_subscribers_receive_publish_mail_only(self):
-        self.sign_in_admin(self.admin)
-        response = self.client.post(reverse("manage:subscriber_import"), {
-            "file": SimpleUploadedFile("customers.csv", b"email\nlist@example.com\nLIST@example.com\n"),
-        })
+    def test_password_reset_uses_smtp_and_invalidates_link_and_session(self):
+        stale = self.app.test_client()
+        with self.client.get("/account/login/") as login:
+            self.assertIn(b"Username", login.data)
+        self.sign_in("reader")
+        stale.set_cookie("trust_session", self.client.get_cookie("trust_session").value)
+        with patch("portal.auth.send") as send:
+            result = self.post("/account/reset/", {"email": "reader@example.com"})
+            self.assertIn(b"Check your email", result.data)
+            self.assertEqual(send.call_count, 1)
+        body = send.call_args.args[2]
+        link = re.search(r"/account/reset/confirm/[^/]+/", body).group(0)
+        password = "replacement-test-password"
+        self.assertEqual(self.post(link, {"password": password, "confirmation": password}).status_code, 302)
+        self.assertIn(b"expired or already been used", self.client.get(link).data)
+        self.assertEqual(stale.get("/notifications/").status_code, 302)
+        response = self.post("/account/login/", {"username": "reader", "password": password})
         self.assertEqual(response.status_code, 302)
-        imported = Subscriber.objects.get()
-        self.assertEqual(imported.status, "pending")
 
-        self.client.force_login(self.customer)
-        self.client.post(reverse("notifications"))
-        subscriber = Subscriber.objects.get(email=self.customer.email)
-        link = reverse("subscription", args=[subscriber.token])
-        self.client.get(link)
-        subscriber.refresh_from_db()
-        self.assertEqual(subscriber.status, "pending")
-        call_command("send_queue")
-        self.assertEqual(len(mail.outbox), 2)
-        self.client.post(link, {"action": "confirm"})
-
-        self.sign_in_admin(self.admin)
-        document = Document.objects.create(category=self.category, title="Audit", teaser="Public summary", minimum_tier=Tier.EXPERT)
-        revision = Revision.objects.create(document=document, label="1", file=SimpleUploadedFile("report.pdf", b"%PDF-1.4"))
-        self.client.post(reverse("manage:revision_publish", args=[revision.pk]))
-        call_command("send_queue")
-        self.assertEqual(mail.outbox[-1].to, [self.customer.email])
-        self.assertIn(link, mail.outbox[-1].body)
-        self.assertIn("Public summary", mail.outbox[-1].body)
-        self.assertEqual(len(mail.outbox), 3)
-        self.client.post(link, {"action": "off"})
-        revision = Revision.objects.create(document=document, label="2", file=SimpleUploadedFile("report.pdf", b"%PDF-1.4"))
-        self.client.post(reverse("manage:revision_publish", args=[revision.pk]))
-        self.assertFalse(OutgoingMail.objects.exists())
+    def test_csv_confirmation_and_publish_notifications(self):
+        self.sign_in("admin", staff=True)
+        self.assertEqual(self.post("/manage/subscribers/import/", {
+            "file": (io.BytesIO(b"email\nreader@example.com\nREADER@example.com\n"), "customers.csv"),
+        }).status_code, 302)
+        with self.app.app_context():
+            subscriber = one("SELECT * FROM portal_subscriber")
+            message = one("SELECT * FROM portal_outgoingmail")
+            self.assertEqual(subscriber["status"], "pending")
+        link = re.search(r"/subscription/[^/]+/", message["body"]).group(0)
+        self.assertEqual(self.post(link, {"action": "confirm"}).status_code, 302)
+        doc, rev = self.upload()
+        self.assertEqual(self.post(f"/manage/documents/{doc}/versions/{rev}/publish/").status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(len(rows("SELECT * FROM portal_outgoingmail")), 2)
+        self.assertEqual(self.post(link, {"action": "off"}).status_code, 302)
+        with patch("portal.services.send") as send:
+            runner = self.app.test_cli_runner()
+            result = runner.invoke(args=["send_queue"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            send.assert_not_called()
