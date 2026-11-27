@@ -98,3 +98,7 @@ Run `DEBUG=1 python -m unittest portal.tests` for the focused workflow checks.
 Chromatica is the default. To use it on devices without a local copy, open **Manage → Settings → Manage webfonts → Chromatica** and enter URLs for your licensed WOFF2 files. Regular and Medium are the primary weights. You can also supply the matching oblique files. Fonts served from another domain must allow cross-origin requests from the portal. The system fallback is used until the files are available.
 
 To add another font family, use **Add webfont**, supply at least the Regular WOFF2 URL, and select the family in **Portal settings**. The system sans, serif, and mono choices are also available.
+
+## License
+
+The project is licensed under the [MIT License](LICENSE). Obtain your own webfont license for any commercial typeface you configure.
