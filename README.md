@@ -1,4 +1,4 @@
-# Trust Centre
+# Trust Centre — Self-hosted compliance document portal
 
 A self-hosted portal for compliance reports, certificates and policies. It uses Flask, SQLite, private PDF storage and SMTP. The customer interface is rendered on the server and uses a small script for the agreement dialog.
 
