@@ -1,0 +1,5 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Make <strong>{{ revision }}</strong> the current version. Subscribers will receive an email if the current version changes.</p>
+<form method="post">{% csrf_token %}<input type="submit" value="Publish revision"></form>
+{% endblock %}

@@ -1,0 +1,23 @@
+services:
+  web:
+    build: .
+    image: trust-centre:local
+    env_file: .env
+    init: true
+    restart: unless-stopped
+    volumes:
+      - portal-data:/data
+    ports:
+      - "127.0.0.1:${PORTAL_PORT:-8000}:8000"
+  mail:
+    image: trust-centre:local
+    env_file: .env
+    init: true
+    restart: unless-stopped
+    depends_on:
+      - web
+    command: ["python", "manage.py", "send_queue", "--watch"]
+    volumes:
+      - portal-data:/data
+volumes:
+  portal-data:

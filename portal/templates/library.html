@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Documents{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <h1>Document library</h1>
+  {% if user.is_authenticated and not user.is_staff %}<span class="pill">{{ user.get_tier_display }} access</span>{% endif %}
+</div>
+<nav class="filters" aria-label="Document categories">
+  <a href="{% url 'library' %}" {% if not category %}aria-current="page"{% endif %}>All documents</a>
+  {% for entry in categories %}
+  <a href="{% url 'library' %}?category={{ entry.name|urlencode }}" {% if entry == category %}aria-current="page"{% endif %}>{{ entry.name }}</a>
+  {% endfor %}
+</nav>
+<div class="documents">
+  {% for item, access in rows %}
+  <article class="row">
+    <div>
+      <span class="category-label">{{ item.category }}</span>
+      <h2>{{ item.title }}</h2>
+      <p>{{ item.teaser }}</p>
+      {% if not access %}<span class="pill">{{ item.get_minimum_tier_display }} required</span>{% endif %}
+    </div>
+    {% if access %}
+      <a class="button" href="{% url 'document' item.pk %}">View document</a>
+    {% else %}
+      <a class="button outline" href="{% url 'document' item.pk %}">Request access</a>
+    {% endif %}
+  </article>
+  {% empty %}<p class="panel">No documents have been published here yet.</p>{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Manage email updates{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Manage email updates</h1>
+  {% if subscriber.status == 'pending' %}
+    <p>Confirm that you want emails when the compliance team publishes or updates a document.</p>
+  {% else %}
+    <p>Unsubscribe from Trust Centre document updates.</p>
+  {% endif %}
+  <form method="post" class="actions">{% csrf_token %}
+    {% if subscriber.status == 'pending' %}<button name="action" value="confirm">Confirm subscription</button>{% endif %}
+    <button class="outline" name="action" value="off">Unsubscribe</button>
+  </form>
+</section>
+{% endblock %}

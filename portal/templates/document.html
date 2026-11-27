@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }}{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'library' %}?category={{ item.category.name|urlencode }}">Back to {{ item.category }}</a>
+<section class="panel">
+  <span class="category-label">{{ item.category }}</span>
+  <h1>{{ item.title }}</h1>
+  <p>{{ item.teaser }}</p>
+  {% if not access %}
+    <span class="pill">{{ item.get_minimum_tier_display }} required</span>
+    {% if user.is_authenticated %}
+      <p>Ask the compliance team for access to this document.</p>
+      <form method="post" action="{% url 'request_access' item.pk %}">{% csrf_token %}
+        <button type="submit">Send access request</button>
+      </form>
+    {% else %}
+      <p>Sign in with your customer account to request access.</p>
+      <a class="button" href="{% url 'login' %}?next={{ request.path|urlencode }}">Sign in</a>
+    {% endif %}
+  {% elif accepted %}
+    <p class="metadata">Version {{ item.current.label }} · {{ item.current.published|date:"j M Y" }}</p>
+    <div class="actions">
+      <a class="button" href="{% url 'download' item.pk item.current_id %}?view=1" target="_blank" rel="noopener">Open PDF</a>
+      <a class="button outline" href="{% url 'download' item.pk item.current_id %}">Download PDF</a>
+    </div>
+    {% if versions %}
+    <details class="history">
+      <summary>Previous versions</summary>
+      <ul>{% for revision in versions %}
+      <li><a href="{% url 'download' item.pk revision.pk %}">{{ revision.label }} · {{ revision.published|date:"j M Y" }}</a></li>
+      {% endfor %}</ul>
+    </details>
+    {% endif %}
+  {% else %}
+    <p>Review and accept the agreement before opening this document.</p>
+    <button type="button" hidden data-review>Review agreement</button>
+    <dialog open aria-labelledby="agreement-title" data-agreement>
+      <h2 id="agreement-title">Document access agreement</h2>
+      <div class="agreement">{{ item.agreement|linebreaks }}</div>
+      <form method="post" action="{% url 'accept' item.pk %}">{% csrf_token %}
+        <input type="hidden" name="digest" value="{{ digest }}">
+        <label class="checkbox"><input type="checkbox" name="agree" value="yes" required> I agree to these terms.</label>
+        <div class="actions">
+          <a class="button outline" href="{% url 'library' %}">Cancel</a>
+          <button type="submit">Accept agreement</button>
+        </div>
+      </form>
+    </dialog>
+  {% endif %}
+</section>
+{% endblock %}

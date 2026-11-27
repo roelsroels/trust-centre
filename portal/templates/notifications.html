@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Email updates{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Email updates</h1>
+  <p>Get an email when the compliance team publishes a new document or updates an existing one.</p>
+  <p><strong>{{ user.email }}</strong></p>
+  {% if subscriber.status == 'active' %}
+    <p>You're subscribed.</p>
+    <a class="button outline" href="{% url 'subscription' subscriber.token %}">Manage subscription</a>
+  {% elif subscriber.status == 'pending' %}
+    <p>Check your inbox for the confirmation email.</p>
+  {% else %}
+    <form method="post">{% csrf_token %}<button type="submit">Send confirmation email</button></form>
+  {% endif %}
+</section>
+{% endblock %}

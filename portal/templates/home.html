@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>{{ brand.name }}</h1>
+  <p>{{ brand.introduction|linebreaksbr }}</p>
+  <a class="button" href="{% url 'library' %}">Browse documents</a>
+</section>
+{% if categories %}
+<section class="section">
+  <h2>Browse by category</h2>
+  <div class="categories">
+    {% for category in categories %}
+    <a class="category" href="{% url 'library' %}?category={{ category.name|urlencode }}">
+      <strong>{{ category.name }}</strong>{% if category.description %}<span>{{ category.description }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+<section class="section team">
+  <h2>Compliance team</h2>
+  <div>{{ brand.team|linebreaks }}</div>
+</section>
+{% endblock %}

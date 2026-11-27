@@ -1,0 +1,5 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Upload a UTF-8 CSV with an <code>email</code> header. New addresses receive a confirmation email.</p>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<input type="submit" value="Import addresses"></form>
+{% endblock %}

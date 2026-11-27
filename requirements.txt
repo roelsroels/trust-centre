@@ -1,0 +1,4 @@
+Django>=5.2.15,<5.3
+gunicorn>=25.3,<26
+whitenoise>=6.9,<7
+django-otp>=1.6,<2

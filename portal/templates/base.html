@@ -1,0 +1,37 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Trust Centre{% endblock %} · {{ brand.name }}</title>
+  <link rel="stylesheet" href="{% static 'portal.css' %}">
+  <script src="{% static 'dialog.js' %}" defer></script>
+</head>
+<body class="font-{{ brand.font }}" style="--accent: {{ brand.accent }}; --ink: {{ brand.ink }}">
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="masthead">
+    <div class="wrap navigation">
+      <a class="wordmark" href="{% url 'home' %}">
+        {% if brand.logo_url %}<img src="{{ brand.logo_url }}" alt="">{% else %}<span class="mark" aria-hidden="true"></span>{% endif %}
+        {{ brand.name }}
+      </a>
+      <nav aria-label="Main">
+        <a href="{% url 'library' %}">Documents</a>
+        {% if user.is_authenticated %}
+          <a href="{% url 'notifications' %}">Email updates</a>
+          {% if user.is_staff %}<a href="{% url 'manage:index' %}">Admin</a>{% endif %}
+          <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="outline" type="submit">Sign out</button></form>
+        {% else %}
+          <a class="button outline" href="{% url 'login' %}">Sign in</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+  <main class="wrap main" id="main">
+    {% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer"><div class="wrap">{{ brand.name }}</div></footer>
+</body>
+</html>
