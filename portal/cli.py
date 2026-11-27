@@ -9,6 +9,7 @@ from werkzeug.datastructures import FileStorage
 from .auth import hash_password, password_error
 from .db import initialize, now, one, run, write
 from .demo.catalog import COMPANY, SAMPLES
+from .models import BURGUNDY, CORAL
 from .services import add_revision, discard, process_mail, stash_file
 
 
@@ -67,9 +68,9 @@ def register_commands(app):
                 if brand or one("SELECT id FROM portal_document LIMIT 1"):
                     raise click.ClickException("Use a fresh portal database to install the demo.")
                 run("""INSERT INTO portal_branding(name,introduction,team,logo_url,accent,ink,font,access_inbox,show_demo_team)
-                       VALUES (?,?,?,'','#076e65','#132a42','sans','',1)""", COMPANY,
+                       VALUES (?,?,?,'',?,?,'sans','',1)""", COMPANY,
                     "Explore how our fictional workflow platform handles security, privacy, and compliance.",
-                    "Meet the people behind our security, audit, and privacy programmes.")
+                    "Meet the people behind our security, audit, and privacy programmes.", CORAL, BURGUNDY)
                 for sample in SAMPLES:
                     run("INSERT OR IGNORE INTO portal_category(name,description) VALUES (?, '')", sample.category)
                     category = one("SELECT id FROM portal_category WHERE name=?", sample.category)

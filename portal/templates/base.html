@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='portal.css') }}">
   <script src="{{ url_for('static', filename='dialog.js') }}" defer></script>
 </head>
-<body class="font-{{ brand.font }}" style="--accent: {{ brand.accent }}; --ink: {{ brand.ink }}">
+<body class="font-{{ brand.font }}" style="--accent: {{ brand.accent }}; --ink: {{ brand.ink }}; --on-accent: {{ button_text }}">
   <a class="skip" href="#main">Skip to content</a>
   <header class="masthead">
     <div class="wrap navigation">

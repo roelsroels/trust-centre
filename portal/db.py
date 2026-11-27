@@ -5,6 +5,8 @@ from pathlib import Path
 
 from flask import current_app, g
 
+from .models import BURGUNDY, CORAL
+
 
 def now():
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="microseconds")
@@ -68,3 +70,8 @@ def initialize():
                 ("Reports", "Audit reports and evidence."),
             ):
                 run("INSERT OR IGNORE INTO portal_category(name, description) VALUES (?, ?)", name, description)
+
+        if one("SELECT version FROM trust_installed")["version"] < 2:
+            run("UPDATE portal_branding SET accent=? WHERE lower(accent)='#076e65'", CORAL)
+            run("UPDATE portal_branding SET ink=? WHERE lower(ink)='#132a42'", BURGUNDY)
+            run("UPDATE trust_installed SET version=2")
