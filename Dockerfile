@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY manage.py .
 COPY portal ./portal
 COPY output/pdf/*.pdf ./output/pdf/
+RUN chmod -R a+rX /app
 USER portal
 EXPOSE 8000
 CMD ["sh", "-ec", "python manage.py init_db && exec gunicorn --no-control-socket --workers 1 --threads 4 --bind 0.0.0.0:8000 portal.wsgi:application"]
