@@ -41,6 +41,8 @@ location / {
 
 Redirect HTTP to HTTPS at the proxy. Keep the web service private behind the proxy, overwrite the forwarded headers as shown, and keep proxy caching disabled. The application trusts these headers for HTTPS and sign-in throttling. Run one web worker and one mail worker per installation.
 
+The Docker container names are `trust-portal-<project>-web` and `trust-portal-<project>-mail`. Use a distinct Compose project name for each new installation on the same host. Keep the project name of an existing installation to reuse its data volume and network. The Compose service names are still `web` and `mail`.
+
 ## Manage the portal
 
 Open `/manage/` or select **Manage** in the main navigation. Admins and Owners enter their password and authenticator code during sign-in. Their verified session opens Manage directly.

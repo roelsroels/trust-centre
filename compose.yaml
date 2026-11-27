@@ -1,5 +1,6 @@
 services:
   web:
+    container_name: trust-portal-${COMPOSE_PROJECT_NAME}-web
     build: .
     image: trust-centre:local
     env_file: .env
@@ -10,6 +11,7 @@ services:
     ports:
       - "127.0.0.1:${PORTAL_PORT:-8000}:8000"
   mail:
+    container_name: trust-portal-${COMPOSE_PROJECT_NAME}-mail
     image: trust-centre:local
     env_file: .env
     init: true
