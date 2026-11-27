@@ -78,3 +78,18 @@ dialog::backdrop { background: #10263bb3; }
 .footer { padding-block: 1.4rem; border-top: 1px solid #dce5e8; font-size: .9rem; }
 .skip { position: absolute; inset: .5rem auto auto .5rem; transform: translateY(-150%); background: white; z-index: 2; padding: .5rem; }
 .skip:focus { transform: none; }
+.team-profiles {
+  display: grid; grid-column: 1 / -1; gap: 1rem; margin-top: .65rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+}
+.profile { border: 1px solid #dce5e8; border-radius: .75rem; overflow: hidden; }
+.portrait {
+  aspect-ratio: 1.15; background: #dce5e8 url("demo/team-portraits.jpg") no-repeat center 24% / 300% auto;
+}
+.portrait-left { background-position-x: left; }
+.portrait-right { background-position-x: right; }
+.profile > div:not(.portrait) { padding: .9rem 1rem 1rem; }
+.profile h3 { margin: 0; font-size: 1.12rem; }
+.profile p { margin: .25rem 0 0; }
+.profile .role { color: var(--accent); font-weight: 650; }
+.demo-note { grid-column: 1 / -1; color: #506477; font-size: .875rem; }

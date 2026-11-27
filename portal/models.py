@@ -27,6 +27,7 @@ class Branding(models.Model):
     name = models.CharField(max_length=100, default="Trust Centre")
     introduction = models.TextField(default="Explore our security and compliance documents.")
     team = models.TextField(default="Our compliance team maintains the reports, certificates and policies in this portal.")
+    show_demo_team = models.BooleanField(default=False, help_text="Show the bundled fictional team profiles on the homepage.")
     logo_url = models.URLField(blank=True, validators=[URLValidator(schemes=["https"])], help_text="Optional HTTPS URL for a company logo.")
     accent = models.CharField(max_length=7, default="#076e65", validators=[color])
     ink = models.CharField(max_length=7, default="#132a42", validators=[color])

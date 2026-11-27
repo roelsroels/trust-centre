@@ -33,6 +33,12 @@ Redirect HTTP to HTTPS at the proxy. Keep the web service private behind the pro
 - Customers can opt in under **Email updates**. In **Subscribers**, import a UTF-8 CSV with an `email` column to queue invitations. Publishing and restoring a revision queues one email per confirmed subscriber. Emails contain the approved teaser, a link to the document and an unsubscribe link. Document access and agreement checks still apply. Changing the agreement text requires fresh acceptance of that text.
 - Keep branding logos at a stable HTTPS URL. The initial deployment uses local accounts. SSO and self-service payments are future integrations.
 
+## Try the fictional demo
+
+On a fresh installation, run `docker compose exec web python manage.py seed_demo` after the web service starts. For local development, run `python manage.py seed_demo` after migrating. The command loads the Alder Quay Systems homepage with three fictional compliance team profiles and AI-generated portraits. It also publishes two sample PDFs each under Reports, Certificates, and Policies, with a mix of Basic, Pro, and Expert access. The SOC 2 report preview demonstrates the agreement dialog.
+
+Use a separate demo data volume if you also run a real portal. The demo command refuses a database that already has branding or documents and creates no accounts or notification emails. The original PDFs live in `output/pdf/`; the certificate specimens and audit report are clearly marked as fictional.
+
 ## Maintain
 
 - Back up the `portal-data` volume, including `portal.sqlite3` and the `private/` PDFs. Stop both services before taking or restoring a filesystem backup so database and files represent the same point in time. Preserve the `.env` separately.

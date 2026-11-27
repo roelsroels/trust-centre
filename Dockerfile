@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && chown portal:portal /data/.volume
 COPY manage.py .
 COPY portal ./portal
+COPY output/pdf/*.pdf ./output/pdf/
 USER portal
 RUN DEBUG=1 python manage.py collectstatic --noinput
 EXPOSE 8000

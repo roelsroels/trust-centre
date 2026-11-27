@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST, require_safe
 
+from .demo.team import TEAM
 from .models import Acceptance, AccessRequest, Branding, Category, Document, OutgoingMail, Revision, Subscriber
 from .services import invite, url
 
@@ -19,7 +20,10 @@ def branding(request):
 
 @require_safe
 def home(request):
-    return render(request, "home.html", {"categories": Category.objects.all()})
+    context = branding(request)
+    context["categories"] = Category.objects.all()
+    context["demo_team"] = TEAM if context["brand"].show_demo_team else ()
+    return render(request, "home.html", context)
 
 
 def allowed(user, document):

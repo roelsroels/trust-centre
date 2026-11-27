@@ -21,5 +21,20 @@
 <section class="section team">
   <h2>Compliance team</h2>
   <div>{{ brand.team|linebreaks }}</div>
+  {% if demo_team %}
+  <div class="team-profiles">
+    {% for member in demo_team %}
+    <article class="profile">
+      <div class="portrait portrait-{{ member.portrait }}" aria-hidden="true"></div>
+      <div>
+        <h3>{{ member.name }}</h3>
+        <p class="role">{{ member.role }}</p>
+        <p>{{ member.expertise }}</p>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  <p class="demo-note">Fictional team · AI-generated portraits</p>
+  {% endif %}
 </section>
 {% endblock %}
