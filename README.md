@@ -65,6 +65,22 @@ On a fresh installation, run `docker compose exec web python manage.py seed_demo
 
 Use a separate demo data volume if you also run a real portal. The demo command refuses a database that already has branding or documents and creates no accounts or notification emails. The original PDFs live in `output/pdf/`; the certificate specimens and audit report are clearly marked as fictional.
 
+## Screenshots
+
+Captured from a local Trust Centre using the fictional Alder Quay Systems demo.
+
+### Homepage
+
+![Trust Centre homepage with document categories and the fictional compliance team](docs/screenshots/homepage.jpg)
+
+### Document library
+
+![Certificate library showing an available document and a document that requires Pro access](docs/screenshots/document-library.jpg)
+
+### Manage dashboard
+
+![Manage dashboard with sections for documents, accounts, requests, categories, subscribers, and settings](docs/screenshots/manage-dashboard.jpg)
+
 ## Upgrade from the previous Django version
 
 Back up the database and private files together before updating. Keep the existing Compose project name, data volume, `.env`, and any local Compose override. The Flask app uses the existing SQLite records and private PDFs in place. Existing passwords, authenticator enrolments, document revisions, agreements, subscribers, and queued mail carry forward. Users must sign in again and request fresh links for any outstanding password resets. The first startup also works on an empty volume.
