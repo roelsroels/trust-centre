@@ -192,7 +192,7 @@ class PortalFlows(unittest.TestCase):
         self.assertNotRegex(wire, rb"(?<!\r)\n|\r(?!\n)")
         headers, payload = wire.split(b"\r\n\r\n", 1)
         self.assertTrue(all(len(line) <= 78 for line in headers.split(b"\r\n")))
-        self.assertTrue(all(len(line) <= 76 for line in payload.split(b"\r\n")))
+        self.assertTrue(all(len(line) <= 998 for line in payload.split(b"\r\n")))
         parser = BytesParser(policy=policy.default)
         message = parser.parsebytes(wire)
         self.assertFalse(message.defects)
@@ -202,9 +202,34 @@ class PortalFlows(unittest.TestCase):
         self.assertEqual(message["From"].addresses[0].display_name, "Équipe conformité")
         self.assertEqual(message["Subject"], subject)
         self.assertEqual(message["MIME-Version"], "1.0")
-        self.assertEqual(message.get_content_charset(), "utf-8")
-        self.assertEqual(message["Content-Transfer-Encoding"], "base64")
-        self.assertEqual(message.get_content().rstrip("\r\n"), body)
+        self.assertEqual(message.get_content_type(), "multipart/alternative")
+        plain, html = message.iter_parts()
+        self.assertEqual(plain.get_content_type(), "text/plain")
+        self.assertEqual(html.get_content_type(), "text/html")
+        for part in (plain, html):
+            self.assertEqual(part.get_content_charset(), "utf-8")
+            self.assertEqual(part["Content-Transfer-Encoding"], "base64")
+            self.assertTrue(all(len(line) <= 76 for line in part.get_payload().splitlines()))
+        self.assertEqual(plain.get_content().rstrip("\r\n"), body)
+        self.assertIn("Trust Centre", html.get_content())
+        self.assertNotIn("<img", html.get_content())
+
+    def test_email_uses_configured_logo_and_safe_action_links(self):
+        self.app.config.update(MAIL_CONSOLE=False, SMTP_SSL=False, BASE_URL="https://trust.example.com")
+        link = "https://trust.example.com/documents/1/"
+        stop = "https://trust.example.com/subscription/token/"
+        with self.app.app_context(), patch("portal.services.smtplib.SMTP") as smtp:
+            run("UPDATE portal_branding SET logo_url=?,name=?", "https://example.com/logo.png", "Alder & Quay")
+            send("reader@example.com", "New report", f"<script>alert(1)</script>\n\n"
+                 f"Open in the Trust Centre: {link}\n\nUnsubscribe: {stop}")
+            message = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+        html = message.get_body(preferencelist=("html",)).get_content()
+        self.assertIn('src="https://example.com/logo.png"', html)
+        self.assertIn("Alder &amp; Quay", html)
+        self.assertIn(f'href="{link}"', html)
+        self.assertIn(f'href="{stop}"', html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertNotIn("<script>", html)
 
     def test_smtp_negotiates_international_mailboxes(self):
         self.app.config.update(MAIL_CONSOLE=False, SMTP_SSL=False)

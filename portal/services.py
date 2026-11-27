@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from flask import current_app
 
 from .db import now, one, rows, run, write
+from .email_content import branded_email
 
 
 def absolute(path):
@@ -126,6 +127,7 @@ def send(email, subject, body):
     host = urlsplit(config["BASE_URL"]).hostname.encode("idna").decode()
     message["Message-ID"] = make_msgid(domain=host)
     message.set_content(body, charset="utf-8", cte="base64")
+    message.add_alternative(branded_email(subject, body), subtype="html", charset="utf-8", cte="base64")
     if config["MAIL_CONSOLE"]:
         print(message, flush=True)
         return
