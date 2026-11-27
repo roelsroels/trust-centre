@@ -4,6 +4,8 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+from email.utils import format_datetime, make_msgid
+from urllib.parse import urlsplit
 
 from flask import current_app
 
@@ -104,6 +106,8 @@ def send(email, subject, body):
     message["From"] = config["FROM_EMAIL"]
     message["To"] = email
     message["Subject"] = subject
+    message["Date"] = format_datetime(datetime.now(timezone.utc))
+    message["Message-ID"] = make_msgid(domain=urlsplit(config["BASE_URL"]).hostname)
     message.set_content(body)
     if config["MAIL_CONSOLE"]:
         print(message, flush=True)

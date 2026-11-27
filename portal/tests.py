@@ -4,6 +4,7 @@ import io
 import re
 import tempfile
 import unittest
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,6 +13,7 @@ import pyotp
 from .app import create_app
 from .auth import signature
 from .db import initialize, now, one, rows, run
+from .services import send
 
 PASSWORD = "temporary-test-password"
 
@@ -165,6 +167,17 @@ class PortalFlows(unittest.TestCase):
         self.assertEqual(stale.get("/notifications/").status_code, 302)
         response = self.post("/account/login/", {"username": "reader", "password": password})
         self.assertEqual(response.status_code, 302)
+
+    def test_smtp_messages_have_origination_headers(self):
+        self.app.config.update(MAIL_CONSOLE=False, SMTP_SSL=False)
+        with self.app.app_context(), patch("portal.services.smtplib.SMTP") as smtp:
+            relay = smtp.return_value.__enter__.return_value
+            send("reader@example.com", "Reset your password", "Example body")
+            send("reader@example.com", "Document updated", "Example body")
+            first, second = (call.args[0] for call in relay.send_message.call_args_list)
+        self.assertEqual(parsedate_to_datetime(first["Date"]).utcoffset().total_seconds(), 0)
+        self.assertRegex(first["Message-ID"], r"^<[^@]+@[^>]+>$")
+        self.assertNotEqual(first["Message-ID"], second["Message-ID"])
 
     def test_csv_confirmation_and_publish_notifications(self):
         self.sign_in("admin", staff=True)
