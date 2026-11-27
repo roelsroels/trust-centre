@@ -269,6 +269,53 @@ class PortalFlows(unittest.TestCase):
                 send("reader@example.com", "Test", "Example body")
             smtp.assert_not_called()
 
+    def test_account_requests_and_import_require_approval_before_setup(self):
+        self.assertIn(b"Request an account", self.client.get("/account/login/").data)
+        path = "/account/request/"
+        email = "new-customer@example.com"
+        self.assertIn(b"Enter a customer or company name", self.post(path, {"email": email}).data)
+        self.assertEqual(self.post(path, {"email": email, "company": "Example Company"}).status_code, 302)
+        self.assertEqual(self.post(path, {"email": email.upper(), "company": "Duplicate"}).status_code, 302)
+        self.assertIn("/account/login/", self.client.get("/manage/accounts/requests/").location)
+        self.sign_in("admin", staff=True)
+        file = b"email,company,tier\nimported@example.com,Imported Company,Pro\nreader@example.com,Existing,Expert\n"
+        import_result = self.post("/manage/accounts/import/", {"file": (io.BytesIO(file), "customers.csv")})
+        self.assertEqual(import_result.status_code, 302)
+        review = "/manage/accounts/requests/"
+        page = self.client.get(review)
+        self.assertIn(b"Example Company", page.data)
+        self.assertIn(b"Imported Company", page.data)
+        with self.app.app_context():
+            pending = rows("SELECT * FROM trust_account_request ORDER BY id")
+            self.assertEqual(len(pending), 2)
+            self.assertEqual(pending[1]["tier"], 20)
+            self.assertIsNone(one("SELECT id FROM portal_account WHERE email=?", email))
+            self.assertFalse(rows("SELECT id FROM portal_outgoingmail"))
+        ids = [entry["id"] for entry in pending]
+        result = self.post(review + "review/", {"selected": ids, "action": "approve"}, source=review)
+        self.assertEqual(result.status_code, 302)
+        with self.app.app_context():
+            customer = one("SELECT * FROM portal_account WHERE email=?", email)
+            self.assertTrue(customer["password"].startswith("!setup:"))
+            self.assertEqual(customer["is_staff"], 0)
+            self.assertEqual(len(rows("SELECT id FROM portal_outgoingmail WHERE setup_account_id IS NOT NULL")), 2)
+        self.post(review + "review/", {"selected": ids, "action": "approve"}, source=review)
+        self.post("/account/logout/", source="/")
+        denied = self.post("/account/login/", {"username": customer["username"], "password": PASSWORD})
+        self.assertIn(b"Check your username and password", denied.data)
+        with patch("portal.auth.send") as send:
+            result = self.app.test_cli_runner().invoke(args=["send_queue"])
+            self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(send.call_count, 2)
+        message = next(call.args for call in send.call_args_list if call.args[0] == email)
+        self.assertIn(customer["username"], message[2])
+        link = re.search(r"/account/reset/confirm/[^/]+/", message[2]).group(0)
+        password = "initial-customer-password"
+        self.assertEqual(self.post(link, {"password": password, "confirmation": password}).status_code, 302)
+        self.assertIn(b"expired or already been used", self.client.get(link).data)
+        signed_in = self.post("/account/login/", {"username": customer["username"], "password": password})
+        self.assertEqual(signed_in.location, "/library/")
+
     def test_csv_confirmation_and_publish_notifications(self):
         self.sign_in("admin", staff=True)
         self.assertEqual(self.post("/manage/subscribers/import/", {

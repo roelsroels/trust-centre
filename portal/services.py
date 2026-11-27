@@ -154,7 +154,14 @@ def process_mail(watch):
                     run("DELETE FROM portal_outgoingmail WHERE id=?", mail["id"])
                     continue
             try:
-                send(mail["email"], mail["subject"], mail["body"])
+                if mail["setup_account_id"]:
+                    from .auth import reset_message
+
+                    account = one("SELECT * FROM portal_account WHERE id=? AND is_active=1", mail["setup_account_id"])
+                    if account and account["email"] == mail["email"] and account["password"].startswith("!setup:"):
+                        reset_message(account)
+                else:
+                    send(mail["email"], mail["subject"], mail["body"])
             except (OSError, ValueError) as error:
                 attempts = mail["attempts"] + 1
                 next_try = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=min(60, 2 ** min(attempts, 6)))

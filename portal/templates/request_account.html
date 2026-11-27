@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Request an account{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Request an account</h1>
+  <p>We’ll review your request. If approved, you’ll receive an email to set your password.</p>
+  <form class="stack" method="post">{{ csrf() }}
+    <p><label for="company">Customer or company name</label>
+      <input id="company" name="company" maxlength="150" autocomplete="organization" value="{{ request.form.get('company', '') }}" required></p>
+    <p><label for="email">Work email address</label>
+      <input id="email" name="email" type="email" maxlength="254" autocomplete="email" value="{{ request.form.get('email', '') }}" required></p>
+    <button type="submit">Submit request</button>
+  </form>
+  <p><a href="{{ url_for('auth.login') }}">Back to sign in</a></p>
+</section>
+{% endblock %}

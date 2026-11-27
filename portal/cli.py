@@ -6,6 +6,7 @@ import pyotp
 from flask import current_app
 from werkzeug.datastructures import FileStorage
 
+from .account_requests import email_address
 from .auth import hash_password, password_error
 from .db import initialize, now, one, run, write
 from .demo.catalog import COMPANY, SAMPLES
@@ -23,8 +24,6 @@ def register_commands(app):
     @click.option("--email", prompt=True)
     @click.password_option()
     def create_owner(username, email, password):
-        from .admin import email_address
-
         if error := password_error(password):
             raise click.ClickException(error)
         try:

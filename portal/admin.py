@@ -5,13 +5,13 @@ import sqlite3
 import uuid
 from urllib.parse import urlsplit
 
-from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 
+from .account_requests import approve_request, email_address, request_account
 from .auth import hash_password, password_error, reset_message
 from .db import now, one, rows, run, write
 from .fonts import STYLES, font_choices, font_url
-from .models import BRANDING, TIERS
+from .models import BRANDING, TIERS, Tier
 from .services import add_revision, discard, invite, publish, prune, stash_file
 from .views import serve_pdf
 
@@ -48,14 +48,11 @@ def field(name, label, kind="text", **options):
     return {"name": name, "label": label, "kind": kind, **options}
 
 
-def email_address(value):
-    return validate_email(value, check_deliverability=False).normalized
-
-
 @manage.get("/")
 def index():
     pending = one("SELECT count(*) AS total FROM portal_accessrequest WHERE handled IS NULL")["total"]
-    return page("Manage Trust Centre", "overview", pending=pending)
+    account_pending = one("SELECT count(*) AS total FROM trust_account_request WHERE status='pending'")["total"]
+    return page("Manage Trust Centre", "overview", pending=pending, account_pending=account_pending)
 
 
 @manage.get("/documents/")
@@ -266,9 +263,84 @@ def manageable_account(identifier):
 def accounts():
     query = request.args.get("q", "").strip()[:150]
     return page("Accounts", "accounts", search=query, entries=rows("""
-        SELECT * FROM portal_account WHERE is_superuser=0 AND (is_staff=0 OR ?=1)
-        AND (instr(lower(username || ' ' || email),lower(?))>0 OR ?='') ORDER BY username
+        SELECT a.*, COALESCE(r.company,'') AS company FROM portal_account a
+        LEFT JOIN trust_account_request r ON r.account_id=a.id
+        WHERE a.is_superuser=0 AND (a.is_staff=0 OR ?=1)
+        AND (instr(lower(a.username || ' ' || a.email || ' ' || COALESCE(r.company,'')),lower(?))>0 OR ?='')
+        ORDER BY a.username
     """, g.user["is_superuser"], query, query))
+
+
+@manage.get("/accounts/requests/")
+def account_requests():
+    pending = rows("SELECT * FROM trust_account_request WHERE status='pending' ORDER BY requested,id")
+    return page("Account requests", "account_requests", entries=pending)
+
+
+@manage.route("/accounts/import/", methods=["GET", "POST"])
+def import_accounts():
+    if request.method == "POST":
+        try:
+            upload = request.files.get("file")
+            if not upload:
+                raise ValueError("Choose a CSV file.")
+            content = upload.read(256 * 1024 + 1)
+            if len(content) > 256 * 1024:
+                raise ValueError("Use a CSV smaller than 256 KB.")
+            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")), strict=True)
+            if not reader.fieldnames or "email" not in reader.fieldnames:
+                raise ValueError("The CSV needs a column called email.")
+            records = []
+            tiers = {name.lower(): tier for tier, name in TIERS.items()}
+            for row in reader:
+                if not any(value for key, value in row.items() if key is not None):
+                    continue
+                email = email_address(row.get("email") or "")
+                company = (row.get("company") or "").strip()
+                tier_name = (row.get("tier") or "").strip().lower()
+                if len(company) > 150 or (tier_name and tier_name not in tiers):
+                    raise ValueError(f"Row {reader.line_num}: use a company name up to 150 characters and Basic, Pro, or Expert for tier.")
+                records.append((email, company, tiers.get(tier_name, Tier.BASIC)))
+            if not records:
+                raise ValueError("The CSV contains no accounts.")
+            with write():
+                created = sum(request_account(email, company, tier=tier, source="import")
+                              for email, company, tier in records)
+            flash(f"Added {created} account request(s) for review. Skipped {len(records) - created} existing or duplicate entries.")
+            return redirect(url_for("manage.account_requests"))
+        except (ValueError, csv.Error) as error:
+            flash(str(error))
+    return form("Import accounts", "account_import", [field("file", "CSV file", "file", required=True,
+                help="Use a UTF-8 CSV with an email column. Optional columns are company and tier. The default tier is Basic.")],
+                label="Import for review")
+
+
+@manage.post("/accounts/requests/review/")
+def review_accounts():
+    selection = {int(value) for value in request.form.getlist("selected") if re.fullmatch(r"[0-9]{1,18}", value)}
+    action = request.form.get("action")
+    if action not in {"approve", "decline"} or not selection:
+        flash("Select the accounts you want to review.")
+        return redirect(url_for("manage.account_requests"))
+    changed = 0
+    with write():
+        for identifier in sorted(selection):
+            entry = one("SELECT * FROM trust_account_request WHERE id=? AND status='pending'", identifier)
+            if not entry:
+                continue
+            if action == "decline":
+                run("UPDATE trust_account_request SET status='declined' WHERE id=?", identifier)
+                changed += 1
+            else:
+                tier = request.form.get(f"tier_{identifier}", entry["tier"], type=int)
+                if tier not in TIERS:
+                    abort(400)
+                changed += approve_request(entry, tier)
+    if action == "approve":
+        flash(f"Approved {changed} account(s). Password setup emails are queued. Requests for existing accounts were skipped.")
+    else:
+        flash(f"Declined {changed} account request(s).")
+    return redirect(url_for("manage.account_requests"))
 
 
 @manage.route("/accounts/new/", methods=["GET", "POST"])
@@ -302,7 +374,7 @@ def edit_account(identifier=None):
             return redirect(url_for("manage.edit_account", identifier=identifier))
         except sqlite3.IntegrityError:
             flash("That username or email address is already in use.")
-        except (ValueError, EmailNotValidError) as error:
+        except ValueError as error:
             flash(str(error))
     fields = [
         field("username", "Username", required=True, maximum=150),
@@ -346,6 +418,7 @@ def delete_account(identifier):
                                   ("portal_account_user_permissions", "account_id")):
                 if one("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table):
                     run(f"DELETE FROM {table} WHERE {column}=?", identifier)
+            run("DELETE FROM trust_account_request WHERE account_id=?", identifier)
             run("DELETE FROM portal_account WHERE id=?", identifier)
         flash("Account deleted.")
         return redirect(url_for("manage.accounts"))

@@ -10,6 +10,7 @@ from flask import Blueprint, abort, current_app, flash, g, redirect, render_temp
 from itsdangerous import BadData, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from .account_requests import email_address, request_account
 from .db import now, one, rows, run, write
 from .services import absolute, send
 
@@ -175,6 +176,29 @@ def authenticator():
     return render_template("authenticator.html", target=target)
 
 
+@auth.route("/account/request/", methods=["GET", "POST"])
+def request_new_account():
+    if g.user:
+        return redirect(url_for("public.library"))
+    if request.method == "POST":
+        address = request.form.get("email", "").strip()
+        company = request.form.get("company", "").strip()
+        if not limit("request-account", address):
+            abort(429)
+        try:
+            email = email_address(address)
+            if not 1 <= len(company) <= 150:
+                raise ValueError("Enter a customer or company name of up to 150 characters.")
+        except ValueError as error:
+            flash(str(error))
+        else:
+            with write():
+                request_account(email, company)
+            flash("If your account request is approved, you’ll receive an email to set your password.")
+            return redirect(url_for("auth.login"))
+    return render_template("request_account.html")
+
+
 @auth.post("/account/logout/")
 def logout():
     session.clear()
@@ -187,10 +211,16 @@ def reset_serializer():
 
 def reset_link(account):
     payload = reset_serializer().dumps([account["id"], signature(account)])
-    return absolute(url_for("auth.reset_confirm", token=payload))
+    return absolute(f"/account/reset/confirm/{payload}/")
 
 
 def reset_message(account):
+    if account["password"].startswith("!setup:"):
+        send(account["email"], "Set up your Trust Centre account",
+             f"Your Trust Centre account has been approved. Your username is {account['username']}.\n\n"
+             f"Choose your password within one hour:\n\n{reset_link(account)}\n\n"
+             "If you did not request an account, you can ignore this email.")
+        return
     send(account["email"], "Reset your Trust Centre password",
          f"Choose a new password within one hour:\n\n{reset_link(account)}\n\n"
          "If you did not request this, you can ignore this email.")
@@ -203,7 +233,7 @@ def reset():
         if not limit("reset", email):
             abort(429)
         for account in rows("SELECT * FROM portal_account WHERE email=? COLLATE NOCASE AND is_active=1", email):
-            if account["password"].startswith("!"):
+            if account["password"].startswith("!") and not account["password"].startswith("!setup:"):
                 continue
             try:
                 reset_message(account)

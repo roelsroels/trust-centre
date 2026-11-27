@@ -19,7 +19,14 @@
   <h1>{{ heading }}</h1>
   {% if fields and obj and section == 'documents' %}<a class="button outline" href="#versions">View versions</a>
   {% elif not fields and section == 'documents' %}<a class="button" href="{{ url_for('manage.edit_document') }}">Add document</a>
-  {% elif section == 'accounts' %}<a class="button" href="{{ url_for('manage.edit_account') }}">Add account</a>
+  {% elif section == 'accounts' %}
+    <div class="actions">
+      <a class="button outline" href="{{ url_for('manage.account_requests') }}">Account requests</a>
+      <a class="button outline" href="{{ url_for('manage.import_accounts') }}">Import accounts</a>
+      <a class="button" href="{{ url_for('manage.edit_account') }}">Add account</a>
+    </div>
+  {% elif section == 'account_requests' %}
+    <a class="button outline" href="{{ url_for('manage.import_accounts') }}">Import accounts</a>
   {% elif section == 'categories' %}<a class="button" href="{{ url_for('manage.edit_category') }}">Add category</a>
   {% elif section == 'settings' %}<a class="button outline" href="{{ url_for('manage.fonts') }}">Manage webfonts</a>
   {% elif section == 'fonts' %}<a class="button" href="{{ url_for('manage.edit_font') }}">Add webfont</a>
@@ -29,12 +36,41 @@
 {% if section == 'overview' %}
   <div class="categories manage-cards">
     <a class="category" href="{{ url_for('manage.documents') }}"><strong>Documents</strong><span>Upload, publish, and manage versions.</span></a>
-    <a class="category" href="{{ url_for('manage.accounts') }}"><strong>Accounts</strong><span>Create accounts and manage access.</span></a>
+    <a class="category" href="{{ url_for('manage.accounts') }}"><strong>Accounts</strong><span>{% if account_pending %}{{ account_pending }} awaiting approval.{% else %}Create accounts and manage access.{% endif %}</span></a>
     <a class="category" href="{{ url_for('manage.requests') }}"><strong>Access requests</strong><span>{{ pending }} awaiting review.</span></a>
     <a class="category" href="{{ url_for('manage.categories') }}"><strong>Categories</strong><span>Organize the document library.</span></a>
     <a class="category" href="{{ url_for('manage.subscribers') }}"><strong>Subscribers</strong><span>Review subscriptions and import addresses.</span></a>
     <a class="category" href="{{ url_for('manage.settings') }}"><strong>Settings</strong><span>Update the homepage and access request inbox.</span></a>
   </div>
+{% elif section == 'account_requests' %}
+  <section class="panel">
+    {% if entries %}
+    <form method="post" action="{{ url_for('manage.review_accounts') }}">{{ csrf() }}
+      <ul class="management-list">
+        {% for entry in entries %}
+        <li>
+          <label class="checkbox">
+            <input type="checkbox" name="selected" value="{{ entry.id }}">
+            <span><strong>{{ entry.company or 'Company not supplied' }}</strong>
+              <span class="metadata">{{ entry.email }} · {{ 'CSV import' if entry.source == 'import' else 'Website request' }} · {{ entry.requested|shortdate }}</span>
+            </span>
+          </label>
+          <div>
+            <label for="tier_{{ entry.id }}">Access level</label>
+            <select id="tier_{{ entry.id }}" name="tier_{{ entry.id }}" aria-label="Access level for {{ entry.email }}">
+              {% for value, name in tiers.items() %}<option value="{{ value }}"{% if value == entry.tier %} selected{% endif %}>{{ name }}</option>{% endfor %}
+            </select>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="actions">
+        <button type="submit" name="action" value="approve">Approve and send setup email</button>
+        <button type="submit" name="action" value="decline" class="outline">Decline selected</button>
+      </div>
+    </form>
+    {% else %}<p>No account requests awaiting review.</p>{% endif %}
+  </section>
 {% elif section == 'confirm' %}
   <section class="panel narrow">
     <p>{{ text }}</p>
@@ -131,7 +167,7 @@
         <div><strong>{{ entry.name }}</strong><span class="metadata">{{ entry.description }}</span></div>
         <a class="button outline" href="{{ url_for('manage.edit_category', identifier=entry.id) }}">Edit category</a>
       {% elif section == 'accounts' %}
-        <div><strong>{{ entry.username }}</strong><span class="metadata">{{ entry.email }} · {{ 'Admin' if entry.is_staff else tiers[entry.tier] }}{% if not entry.is_active %} · Disabled{% endif %}</span></div>
+        <div><strong>{{ entry.username }}</strong><span class="metadata">{{ entry.email }}{% if entry.company %} · {{ entry.company }}{% endif %} · {{ 'Admin' if entry.is_staff else tiers[entry.tier] }}{% if not entry.is_active %} · Disabled{% endif %}</span></div>
         <a class="button outline" href="{{ url_for('manage.edit_account', identifier=entry.id) }}">Edit account</a>
       {% elif section == 'requests' %}
         <div><strong>{{ entry.username }} · {{ entry.title }}</strong><span class="metadata">{{ entry.email }} · {{ tiers[entry.tier] }} requested · {{ entry.requested|shortdate }}</span></div>

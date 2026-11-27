@@ -79,5 +79,11 @@ def initialize():
         if one("SELECT version FROM trust_installed")["version"] < 3:
             run("UPDATE portal_branding SET font='chromatica' WHERE font='sans'")
             run("UPDATE trust_installed SET version=3")
+        if one("SELECT version FROM trust_installed")["version"] < 4:
+            columns = {column["name"] for column in rows("PRAGMA table_info(portal_outgoingmail)")}
+            if "setup_account_id" not in columns:
+                run("""ALTER TABLE portal_outgoingmail ADD COLUMN setup_account_id INTEGER
+                       REFERENCES portal_account(id) ON DELETE CASCADE""")
+            run("UPDATE trust_installed SET version=4")
         run("""INSERT OR IGNORE INTO trust_font(key,name,regular,medium,italic,medium_italic)
                VALUES ('chromatica','Chromatica','','','','')""")

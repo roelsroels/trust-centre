@@ -21,7 +21,7 @@ LINK_LABELS = {
 }
 
 
-def email_blocks(body):
+def email_blocks(subject, body):
     base = current_app.config["BASE_URL"] + "/"
     for paragraph in re.split(r"\n\s*\n", body.strip()):
         for label_prefix, label in LINK_LABELS.items():
@@ -32,7 +32,7 @@ def email_blocks(body):
             address = paragraph
             path = address.removeprefix(base)
             if path.startswith("account/reset/confirm/"):
-                label = "Reset password"
+                label = "Set password" if subject == "Set up your Trust Centre account" else "Reset password"
             elif path.startswith("documents/"):
                 label = "View document"
             else:
@@ -58,5 +58,5 @@ def branded_email(subject, body):
         brand=brand, logo_url=logo_url, accent=accent, ink=ink, on_accent=button_text(accent),
         on_ink=button_text(ink), font_faces=faces(font), font_family=SYSTEM_FONTS.get(font, WEBFONT_STACK),
         chromatica=font == "chromatica",
-        subject=subject, blocks=list(email_blocks(body)), home=current_app.config["BASE_URL"],
+        subject=subject, blocks=list(email_blocks(subject, body)), home=current_app.config["BASE_URL"],
     )
