@@ -50,17 +50,3 @@ CREATE TABLE IF NOT EXISTS trust_font (
     italic TEXT NOT NULL,
     medium_italic TEXT NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS trust_account_request (
-    id INTEGER PRIMARY KEY,
-    email TEXT NOT NULL COLLATE NOCASE,
-    company TEXT NOT NULL,
-    tier INTEGER NOT NULL CHECK (tier IN (10, 20, 30)),
-    source TEXT NOT NULL CHECK (source IN ('website', 'import')),
-    requested TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
-    account_id INTEGER REFERENCES portal_account(id) ON DELETE SET NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS trust_pending_account_request
-ON trust_account_request(email) WHERE status='pending';

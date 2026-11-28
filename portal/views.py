@@ -1,11 +1,11 @@
 import hashlib
 import uuid
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 
 from .db import now, one, rows, run, write
 from .demo.team import TEAM
-from .models import BRANDING, TIERS
+from .models import BRANDING, TIERS, Tier
 from .services import absolute, enqueue, invite, private_file
 
 public = Blueprint("public", __name__)
@@ -24,7 +24,9 @@ def document(pk):
 
 
 def allowed(doc):
-    return bool(g.user and (g.staff or g.user["tier"] >= doc["minimum_tier"]))
+    return doc["minimum_tier"] == Tier.PUBLIC or bool(
+        g.user and (g.staff or g.user["tier"] >= doc["minimum_tier"])
+    )
 
 
 def digest(doc):
@@ -32,9 +34,13 @@ def digest(doc):
 
 
 def accepted(doc):
-    return not doc["agreement"] or one(
-        "SELECT id FROM portal_acceptance WHERE user_id=? AND document_id=? AND digest=?",
-        g.user["id"], doc["id"], digest(doc))
+    if not doc["agreement"]:
+        return True
+    signature = digest(doc)
+    if not g.user:
+        return session.get("public_agreements", {}).get(str(doc["id"])) == signature
+    return one("SELECT id FROM portal_acceptance WHERE user_id=? AND document_id=? AND digest=?",
+               g.user["id"], doc["id"], signature) is not None
 
 
 @public.get("/")
@@ -75,8 +81,15 @@ def accept(pk):
             abort(403)
         signature = digest(doc)
         if doc["agreement"] and request.form.get("agree") == "yes" and request.form.get("digest") == signature:
-            run("""INSERT OR IGNORE INTO portal_acceptance(user_id,document_id,digest,text,accepted)
-                   VALUES (?,?,?,?,?)""", g.user["id"], pk, signature, doc["agreement"], now())
+            if g.user:
+                run("""INSERT OR IGNORE INTO portal_acceptance(user_id,document_id,digest,text,accepted)
+                       VALUES (?,?,?,?,?)""", g.user["id"], pk, signature, doc["agreement"], now())
+            else:
+                agreements = session.get("public_agreements", {})
+                agreements.pop(str(pk), None)
+                agreements[str(pk)] = signature
+                # Keep the signed session cookie bounded when many documents use agreements.
+                session["public_agreements"] = dict(list(agreements.items())[-16:])
         else:
             flash("Review and confirm the current agreement.")
     return redirect(url_for("public.document_page", pk=pk))
@@ -85,9 +98,13 @@ def accept(pk):
 @public.get("/documents/<int:pk>/files/<int:revision>/")
 def download(pk, revision):
     doc = document(pk)
-    if not g.user:
-        return redirect(url_for("auth.login", next=request.path))
-    if not allowed(doc) or not accepted(doc):
+    if not allowed(doc):
+        if not g.user:
+            return redirect(url_for("auth.login", next=request.path))
+        abort(403)
+    if not accepted(doc):
+        if not g.user:
+            return redirect(url_for("public.document_page", pk=pk))
         abort(403)
     item = one("SELECT * FROM portal_revision WHERE id=? AND document_id=? AND published IS NOT NULL", revision, pk)
     if not item:

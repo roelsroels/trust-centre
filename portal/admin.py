@@ -128,7 +128,8 @@ def edit_document(identifier=None):
         field("title", "Title", required=True, maximum=150),
         field("category_id", "Category", "select", choices=[(x["id"], x["name"]) for x in categories], required=True),
         field("teaser", "Public teaser", "textarea", maximum=500, required=True, help="Anyone can read this summary."),
-        field("minimum_tier", "Minimum access", "select", choices=TIERS.items(), required=True),
+        field("minimum_tier", "Minimum access", "select", choices=TIERS.items(), required=True,
+              help="Public allows anyone to open the published PDF, including visitors who are signed out."),
         field("agreement", "Access agreement (optional)", "textarea", maximum=20000, help="Customers must accept these terms before opening the PDF."),
         field("retain_previous", "Previous versions to keep", "number", required=True, minimum=0, maximum=100,
               help="The current version is kept separately. Lowering this number removes older published files."),
@@ -299,7 +300,7 @@ def import_accounts():
                 company = (row.get("company") or "").strip()
                 tier_name = (row.get("tier") or "").strip().lower()
                 if len(company) > 150 or (tier_name and tier_name not in tiers):
-                    raise ValueError(f"Row {reader.line_num}: use a company name up to 150 characters and Basic, Pro, or Expert for tier.")
+                    raise ValueError(f"Row {reader.line_num}: use a company name up to 150 characters and Public, Basic, Pro, or Expert for tier.")
                 records.append((email, company, tiers.get(tier_name, Tier.BASIC)))
             if not records:
                 raise ValueError("The CSV contains no accounts.")

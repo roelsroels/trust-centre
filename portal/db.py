@@ -85,5 +85,30 @@ def initialize():
                 run("""ALTER TABLE portal_outgoingmail ADD COLUMN setup_account_id INTEGER
                        REFERENCES portal_account(id) ON DELETE CASCADE""")
             run("UPDATE trust_installed SET version=4")
+        if one("SELECT version FROM trust_installed")["version"] < 5:
+            migrate_account_request_tiers()
+            run("UPDATE trust_installed SET version=5")
         run("""INSERT OR IGNORE INTO trust_font(key,name,regular,medium,italic,medium_italic)
                VALUES ('chromatica','Chromatica','','','','')""")
+
+
+def migrate_account_request_tiers():
+    existing = one("SELECT name FROM sqlite_master WHERE type='table' AND name='trust_account_request'")
+    if existing:
+        run("ALTER TABLE trust_account_request RENAME TO trust_account_request_v4")
+    run("""CREATE TABLE trust_account_request (
+            id INTEGER PRIMARY KEY,
+            email TEXT NOT NULL COLLATE NOCASE,
+            company TEXT NOT NULL,
+            tier INTEGER NOT NULL CHECK (tier IN (0, 10, 20, 30)),
+            source TEXT NOT NULL CHECK (source IN ('website', 'import')),
+            requested TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
+            account_id INTEGER REFERENCES portal_account(id) ON DELETE SET NULL
+        )""")
+    if existing:
+        run("""INSERT INTO trust_account_request (id,email,company,tier,source,requested,status,account_id)
+               SELECT id,email,company,tier,source,requested,status,account_id FROM trust_account_request_v4""")
+        run("DROP TABLE trust_account_request_v4")
+    run("""CREATE UNIQUE INDEX trust_pending_account_request
+           ON trust_account_request(email) WHERE status='pending'""")

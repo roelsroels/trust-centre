@@ -55,12 +55,12 @@ Open `/manage/` or select **Manage** in the main navigation. Admins and Owners e
 | **Overview** | Open common management tasks and see pending account approvals and access requests. |
 | **Documents** | Add a PDF with a category, public teaser, minimum access level, and optional agreement. Preview the uploaded draft, then choose **Publish** under **Versions**. Upload replacements from the same page, restore a retained version, or review recorded agreement acceptances. |
 | **Categories** | Add and edit the categories used by the public library. Move documents out of a category before deleting it. |
-| **Accounts** | Review account requests, import customers from CSV, create customers, assign access levels, enable or disable accounts, send password resets, and delete accounts. Higher customer tiers include lower tiers. Only Owners can manage administrator accounts. After granting administrator access, use `enable_totp` to enrol that administrator. |
+| **Accounts** | Review account requests, import customers from CSV, create customers, assign access levels, enable or disable accounts, send password resets, and delete accounts. Customer tiers are Public, Basic, Pro, and Expert. Higher tiers include lower tiers. Only Owners can manage administrator accounts. After granting administrator access, use `enable_totp` to enrol that administrator. |
 | **Access requests** | Review a request, open the customer account to update their tier, and mark the request handled. The portal also emails the inbox configured in Settings. |
 | **Subscribers** | Review subscription status and import a UTF-8 CSV with an `email` column. New recipients receive a confirmation link. |
 | **Settings** | Edit homepage copy, team description, logo URL, colours, font, and the access-request inbox. Use **Manage webfonts** to configure or add a webfont. |
 
-Category descriptions, document titles, and teasers are public. Publishing or restoring a version emails confirmed subscribers. Document links still require the appropriate access tier and, where enabled, agreement acceptance. The portal uses local accounts and manual access grants. Outgoing HTML emails use the site's active colours, font, and logo, with a plain-text alternative.
+Category descriptions, document titles, and teasers are public. Publishing or restoring a version emails confirmed subscribers. Published Public documents can be opened or downloaded by anyone. Signed-in accounts at the Public tier can access Public documents and request access to higher tiers. When a Public document has an agreement, signed-out visitors must accept it in their browser session. Signed-in acceptances are recorded against the account. The portal uses local accounts and manual access grants. Outgoing HTML emails use the site's active colours, font, and logo, with a plain-text alternative.
 
 To verify a new installation, publish a sample PDF and try it with a customer account. Check the teaser and access request at a lower tier, agreement acceptance after granting access, and delivery of a password reset and a document update.
 
@@ -68,7 +68,7 @@ To verify a new installation, publish a sample PDF and try it with a customer ac
 
 From **Sign in → Request an account**, a customer supplies their work email and customer or company name. Open **Manage → Accounts → Account requests** to match the request to your customer records, select an access level, and approve or decline it.
 
-For bulk onboarding, open **Manage → Accounts → Import accounts** and upload a UTF-8 CSV. The `email` column is required. `company` and `tier` are optional. The tier can be Basic, Pro, or Expert and defaults to Basic.
+For bulk onboarding, open **Manage → Accounts → Import accounts** and upload a UTF-8 CSV. The `email` column is required. `company` and `tier` are optional. The tier can be Public, Basic, Pro, or Expert and defaults to Basic.
 
 ```csv
 email,company,tier

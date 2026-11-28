@@ -2,6 +2,7 @@ from enum import IntEnum
 
 
 class Tier(IntEnum):
+    PUBLIC = 0
     BASIC = 10
     PRO = 20
     EXPERT = 30

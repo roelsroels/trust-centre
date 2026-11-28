@@ -18,7 +18,8 @@
       <span class="category-label">{{ item.category }}</span>
       <h2>{{ item.title }}</h2>
       <p>{{ item.teaser }}</p>
-      {% if not access %}<span class="pill">{{ tiers[item.minimum_tier] }} required</span>{% endif %}
+      {% if item.minimum_tier == public_tier %}<span class="pill">Public</span>
+      {% elif not access %}<span class="pill">{{ tiers[item.minimum_tier] }} required</span>{% endif %}
     </div>
     {% if access %}
       <a class="button" href="{{ url_for('public.document_page', pk=item.id) }}">View document</a>

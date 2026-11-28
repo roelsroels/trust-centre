@@ -121,6 +121,52 @@ class PortalFlows(unittest.TestCase):
             run("UPDATE portal_document SET agreement='Changed' WHERE id=?", doc)
         self.assertEqual(self.client.get(download).status_code, 403)
 
+    def test_public_tier_and_signed_out_agreement(self):
+        self.sign_in("admin", staff=True)
+        identifier, revision = self.upload()
+        doc_path = f"/documents/{identifier}/"
+        file = f"{doc_path}files/{revision}/"
+        edit = f"/manage/documents/{identifier}/"
+        fields = {"title": "Audit report", "teaser": "Scope of the audit.", "category_id": self.category,
+                  "minimum_tier": 0, "retain_previous": 1, "agreement": ""}
+        self.assertIn(b'Public allows anyone', self.client.get(edit).data)
+        self.assertEqual(self.post(edit, fields).status_code, 302)
+        guest = self.app.test_client()
+        self.assertEqual(guest.get(file).status_code, 404)
+        publish = f"/manage/documents/{identifier}/versions/{revision}/publish/"
+        self.assertEqual(self.post(publish).status_code, 302)
+        self.assertIn(b">Public</span>", guest.get("/library/").data)
+        with guest.get(file) as pdf:
+            self.assertEqual(pdf.data, b"%PDF-1.4\nreport")
+            self.assertEqual(pdf.headers["Cache-Control"], "no-store")
+
+        account = f"/manage/accounts/{self.reader}/"
+        self.assertEqual(self.post(account, {"username": "reader", "email": "reader@example.com",
+                                            "tier": 0, "is_active": "on"}).status_code, 302)
+        self.assertIn(b'<option value="0" selected>Public', self.client.get(account).data)
+        fields["agreement"] = "Read this first."
+        self.assertEqual(self.post(edit, fields).status_code, 302)
+        self.assertEqual(guest.get(file).location, doc_path)
+        page = guest.get(doc_path)
+        csrf = re.search(rb'name="csrf_token" value="([^"]+)"', page.data).group(1).decode()
+        digest = re.search(rb'name="digest" value="([^"]+)"', page.data).group(1).decode()
+        self.assertEqual(guest.post(doc_path + "agreement/", data={
+            "csrf_token": csrf, "digest": digest, "agree": "yes",
+        }).status_code, 302)
+        with guest.get(file) as pdf:
+            self.assertEqual(pdf.status_code, 200)
+        self.assertEqual(self.app.test_client().get(file).location, doc_path)
+
+        fields["agreement"] = "Revised terms."
+        self.assertEqual(self.post(edit, fields).status_code, 302)
+        self.assertEqual(guest.get(file).location, doc_path)
+        fields.update(agreement="", minimum_tier=10)
+        self.assertEqual(self.post(edit, fields).status_code, 302)
+        self.assertIn("/account/login/", guest.get(file).location)
+        self.post("/account/logout/", source="/")
+        self.sign_in("reader")
+        self.assertEqual(self.client.get(file).status_code, 403)
+
     def test_staff_roles_mfa_and_csrf(self):
         self.sign_in("admin", staff=True)
         self.assertEqual(self.client.get("/manage/").status_code, 200)
@@ -278,7 +324,7 @@ class PortalFlows(unittest.TestCase):
         self.assertEqual(self.post(path, {"email": email.upper(), "company": "Duplicate"}).status_code, 302)
         self.assertIn("/account/login/", self.client.get("/manage/accounts/requests/").location)
         self.sign_in("admin", staff=True)
-        file = b"email,company,tier\nimported@example.com,Imported Company,Pro\nreader@example.com,Existing,Expert\n"
+        file = b"email,company,tier\nimported@example.com,Imported Company,Public\nreader@example.com,Existing,Expert\n"
         import_result = self.post("/manage/accounts/import/", {"file": (io.BytesIO(file), "customers.csv")})
         self.assertEqual(import_result.status_code, 302)
         review = "/manage/accounts/requests/"
@@ -288,7 +334,7 @@ class PortalFlows(unittest.TestCase):
         with self.app.app_context():
             pending = rows("SELECT * FROM trust_account_request ORDER BY id")
             self.assertEqual(len(pending), 2)
-            self.assertEqual(pending[1]["tier"], 20)
+            self.assertEqual(pending[1]["tier"], 0)
             self.assertIsNone(one("SELECT id FROM portal_account WHERE email=?", email))
             self.assertFalse(rows("SELECT id FROM portal_outgoingmail"))
         ids = [entry["id"] for entry in pending]

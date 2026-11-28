@@ -91,7 +91,7 @@
           <label for="{{ field.name }}">{{ field.label }}</label>
           {% if field.kind == 'select' %}
             <select id="{{ field.name }}" name="{{ field.name }}" {% if field.required %}required{% endif %}>
-              {% if not value %}<option value="">Choose {{ field.label|lower }}</option>{% endif %}
+              {% if value == "" %}<option value="">Choose {{ field.label|lower }}</option>{% endif %}
               {% for key, option in field.choices %}<option value="{{ key }}"{% if key|string == value|string %} selected{% endif %}>{{ option }}</option>{% endfor %}
             </select>
           {% elif field.kind == 'textarea' %}

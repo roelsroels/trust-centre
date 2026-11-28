@@ -12,7 +12,7 @@ from .auth import auth, hash_password, load_user
 from .cli import register_commands
 from .db import close_db
 from .fonts import BUILTIN, faces
-from .models import TIERS, button_text
+from .models import TIERS, Tier, button_text
 from .views import branding, public
 
 
@@ -51,7 +51,7 @@ def create_app(**overrides):
         font_faces = faces(brand["font"])
         font_class = brand["font"] if brand["font"] in BUILTIN else "web"
         return {"brand": brand, "font_faces": font_faces, "font_class": font_class, "button_text": button_text(brand["accent"]), "user": g.get("user"), "staff": g.get("staff"),
-                "tiers": TIERS, "messages": get_flashed_messages()}
+                "tiers": TIERS, "public_tier": Tier.PUBLIC, "messages": get_flashed_messages()}
 
     @app.template_filter("shortdate")
     def shortdate(value):

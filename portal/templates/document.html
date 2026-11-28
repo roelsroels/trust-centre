@@ -6,6 +6,7 @@
   <span class="category-label">{{ item.category }}</span>
   <h1>{{ item.title }}</h1>
   <p>{{ item.teaser }}</p>
+  {% if item.minimum_tier == public_tier %}<span class="pill">Public</span>{% endif %}
   {% if not access %}
     <span class="pill">{{ tiers[item.minimum_tier] }} required</span>
     {% if user %}
