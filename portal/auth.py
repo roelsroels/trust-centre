@@ -105,6 +105,18 @@ def establish_session(account, device=None):
     run("UPDATE portal_account SET last_login=? WHERE id=?", now(), account["id"])
 
 
+def finish_login(account, target):
+    if account["is_staff"]:
+        session.clear()
+        session["mfa_pending"] = {
+            "id": account["id"], "stamp": signature(account),
+            "target": target, "expires": int(time.time()) + 300,
+        }
+        return redirect(url_for("auth.authenticator"))
+    establish_session(account)
+    return redirect(target)
+
+
 @auth.get("/manage/login/")
 def manage_login():
     target = destination(request.args.get("next"), "/manage/")
@@ -130,15 +142,7 @@ def login():
             with write():
                 refreshed = one("SELECT * FROM portal_account WHERE id=? AND is_active=1", user["id"])
                 if refreshed and signature(refreshed) == signature(user):
-                    if refreshed["is_staff"]:
-                        session.clear()
-                        session["mfa_pending"] = {
-                            "id": refreshed["id"], "stamp": signature(refreshed),
-                            "target": target, "expires": int(time.time()) + 300,
-                        }
-                        return redirect(url_for("auth.authenticator"))
-                    establish_session(refreshed)
-                    return redirect(target)
+                    return finish_login(refreshed, target)
         session.pop("mfa_pending", None)
         flash("Check your username and password.")
     return render_template("sign_in.html", target=target)

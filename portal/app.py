@@ -13,6 +13,7 @@ from .cli import register_commands
 from .db import close_db
 from .fonts import BUILTIN, faces
 from .models import TIERS, Tier, button_text
+from .sso import available, configuration, sso
 from .views import branding, public
 
 
@@ -49,8 +50,10 @@ def create_app(**overrides):
     def shared():
         brand = branding()
         font_faces = faces(brand["font"])
+        oidc = configuration()
         font_class = brand["font"] if brand["font"] in BUILTIN else "web"
         return {"brand": brand, "font_faces": font_faces, "font_class": font_class, "button_text": button_text(brand["accent"]), "user": g.get("user"), "staff": g.get("staff"),
+                "sso_enabled": available(oidc), "sso_label": oidc["label"],
                 "tiers": TIERS, "public_tier": Tier.PUBLIC, "messages": get_flashed_messages()}
 
     @app.template_filter("shortdate")
@@ -84,6 +87,7 @@ def create_app(**overrides):
     app.teardown_appcontext(close_db)
     app.register_blueprint(public)
     app.register_blueprint(auth)
+    app.register_blueprint(sso)
     app.register_blueprint(manage)
     register_commands(app)
     return app

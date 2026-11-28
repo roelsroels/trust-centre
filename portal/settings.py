@@ -29,3 +29,5 @@ SMTP_SSL = os.getenv("SMTP_SSL") == "1"
 SMTP_TLS = os.getenv("SMTP_TLS", "1") == "1" and not SMTP_SSL
 FROM_EMAIL = os.getenv("FROM_EMAIL", "trust@example.com")
 MAIL_CONSOLE = os.getenv("MAIL_CONSOLE") == "1"
+
+SSO_CLIENT_SECRET = os.getenv("SSO_CLIENT_SECRET", "")

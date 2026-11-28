@@ -21,6 +21,7 @@
         <a href="{{ url_for('public.library') }}">Documents</a>
         {% if user %}
           <a href="{{ url_for('public.notifications') }}">Email updates</a>
+          {% if sso_enabled %}<a href="{{ url_for('sso.connection') }}">Single sign-on</a>{% endif %}
           {% if user.is_staff %}<a href="{{ url_for('manage.index') }}">Manage</a>{% endif %}
           <form method="post" action="{{ url_for('auth.logout') }}">{{ csrf() }}<button class="outline" type="submit">Sign out</button></form>
         {% else %}

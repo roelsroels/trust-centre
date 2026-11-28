@@ -3,3 +3,5 @@ Flask-WTF>=1.2,<2
 email-validator>=2,<3
 pyotp>=2.9,<3
 gunicorn>=25.3,<26
+Authlib>=1.9.10,<2
+requests>=2.32,<3

@@ -28,7 +28,10 @@
   {% elif section == 'account_requests' %}
     <a class="button outline" href="{{ url_for('manage.import_accounts') }}">Import accounts</a>
   {% elif section == 'categories' %}<a class="button" href="{{ url_for('manage.edit_category') }}">Add category</a>
-  {% elif section == 'settings' %}<a class="button outline" href="{{ url_for('manage.fonts') }}">Manage webfonts</a>
+  {% elif section == 'settings' %}<div class="actions">
+    <a class="button outline" href="{{ url_for('manage.fonts') }}">Manage webfonts</a>
+    {% if user.is_superuser %}<a class="button outline" href="{{ url_for('manage.sso_settings') }}">Single sign-on</a>{% endif %}
+  </div>
   {% elif section == 'fonts' %}<a class="button" href="{{ url_for('manage.edit_font') }}">Add webfont</a>
   {% elif section == 'subscribers' %}<a class="button" href="{{ url_for('manage.import_subscribers') }}">Import CSV</a>{% endif %}
 </div>
@@ -77,7 +80,11 @@
     <form method="post" class="actions">{{ csrf() }}<button>{{ label }}</button><a href="{{ back }}">Cancel</a></form>
   </section>
 {% elif fields %}
-  {% if section == 'font_form' %}
+  {% if section == 'sso_settings' %}
+    <p>Register this redirect URI with your OpenID Connect provider.</p>
+    <p><code>{{ callback }}</code></p>
+    <p>Client secret <strong>{{ 'configured' if secret_set else 'missing' }}</strong>. Set <code>SSO_CLIENT_SECRET</code> in the server environment.</p>
+  {% elif section == 'font_form' %}
   <p>Use direct HTTPS links to licensed WOFF2 files. If your font host is on another domain, it must allow this site to load the files.</p>
   {% endif %}
   <section class="panel form-panel">

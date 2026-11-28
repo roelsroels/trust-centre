@@ -50,3 +50,20 @@ CREATE TABLE IF NOT EXISTS trust_font (
     italic TEXT NOT NULL,
     medium_italic TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS trust_sso_config (
+    id INTEGER PRIMARY KEY CHECK (id=1),
+    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    label TEXT NOT NULL,
+    issuer TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    token_auth TEXT NOT NULL CHECK (token_auth IN ('client_secret_basic', 'client_secret_post'))
+);
+
+CREATE TABLE IF NOT EXISTS trust_sso_identity (
+    issuer TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    account_id INTEGER NOT NULL REFERENCES portal_account(id) ON DELETE CASCADE,
+    PRIMARY KEY (issuer, subject),
+    UNIQUE (issuer, account_id)
+);

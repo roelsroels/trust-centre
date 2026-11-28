@@ -3,9 +3,11 @@ import io
 import re
 import sqlite3
 import uuid
+
+import requests
 from urllib.parse import urlsplit
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
 
 from .account_requests import approve_request, email_address, request_account
 from .auth import hash_password, password_error, reset_message
@@ -13,6 +15,7 @@ from .db import now, one, rows, run, write
 from .fonts import STYLES, font_choices, font_url
 from .models import BRANDING, TIERS, Tier
 from .services import add_revision, discard, invite, publish, prune, stash_file
+from .sso import AUTH_METHODS, CALLBACK, client as oidc_client, configuration, valid_issuer
 from .views import serve_pdf
 
 manage = Blueprint("manage", __name__, url_prefix="/manage")
@@ -555,3 +558,48 @@ def edit_font(key=None):
                for field_name, label, *_ in STYLES]
     return form("Edit webfont" if entry else "Add a webfont", "font_form", fields,
                 values=dict(entry) if entry else {}, label="Save webfont")
+
+
+@manage.route("/settings/sso/", methods=["GET", "POST"])
+def sso_settings():
+    if not g.user["is_superuser"]:
+        abort(403)
+    existing = configuration()
+    secret_set = bool(current_app.config["SSO_CLIENT_SECRET"])
+    callback = current_app.config["BASE_URL"] + CALLBACK
+    if request.method == "POST":
+        values = {
+            "enabled": int(request.form.get("enabled") == "on"),
+            "label": request.form.get("label", "").strip(),
+            "issuer": request.form.get("issuer", "").strip(),
+            "client_id": request.form.get("client_id", "").strip(),
+            "token_auth": request.form.get("token_auth", ""),
+        }
+        try:
+            if not 1 <= len(values["label"]) <= 60:
+                raise ValueError("Enter a provider name of up to 60 characters.")
+            if values["issuer"] and (len(values["issuer"]) > 500 or not valid_issuer(values["issuer"])):
+                raise ValueError("Enter the provider’s HTTPS OpenID Connect issuer URL.")
+            if values["token_auth"] not in dict(AUTH_METHODS) or len(values["client_id"]) > 250:
+                raise ValueError("Check the client ID and token authentication method.")
+            if values["enabled"]:
+                if not (values["issuer"] and values["client_id"] and secret_set and callback.startswith("https://")):
+                    raise ValueError("Set the HTTPS site URL, issuer, client ID and SSO_CLIENT_SECRET before enabling.")
+                oidc_client(values)
+            run("""INSERT INTO trust_sso_config(id,enabled,label,issuer,client_id,token_auth) VALUES (1,?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,label=excluded.label,
+                       issuer=excluded.issuer,client_id=excluded.client_id,token_auth=excluded.token_auth""",
+                *values.values())
+            flash("Single sign-on settings saved.")
+            return redirect(url_for("manage.sso_settings"))
+        except requests.RequestException:
+            flash("Could not reach the provider’s discovery URL over HTTPS.")
+        except ValueError as error:
+            flash(str(error))
+    return form("Single sign-on settings", "sso_settings", [
+        field("enabled", "Enable single sign-on", "checkbox"),
+        field("label", "Provider display name", maximum=60, required=True),
+        field("issuer", "OpenID Connect issuer URL", "url", maximum=500),
+        field("client_id", "Client ID", maximum=250),
+        field("token_auth", "Token endpoint authentication", "select", choices=AUTH_METHODS, required=True),
+    ], values=dict(existing), callback=callback, secret_set=secret_set)

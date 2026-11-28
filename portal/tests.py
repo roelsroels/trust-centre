@@ -4,14 +4,18 @@ import io
 import re
 import smtplib
 import tempfile
+import time
 import unittest
 from email import policy
 from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 import pyotp
+from joserfc import jwt
+from joserfc.jwk import RSAKey
 
 from .app import create_app
 from .auth import signature
@@ -120,6 +124,64 @@ class PortalFlows(unittest.TestCase):
         with self.app.app_context():
             run("UPDATE portal_document SET agreement='Changed' WHERE id=?", doc)
         self.assertEqual(self.client.get(download).status_code, 403)
+
+    def test_sso_settings_owner_only_and_existing_account_link(self):
+        settings = "/manage/settings/sso/"
+        login = "/account/login/"
+        connection = "/account/sso/connection/"
+        start = "/account/sso/start/"
+        issuer = "https://identity.example.com"
+        key = RSAKey.generate_key(2048, private=True, parameters={"kid": "fixture"})
+        provider = {name: issuer + path for name, path in {
+            "authorization_endpoint": "/authorize", "token_endpoint": "/token", "jwks_uri": "/keys",
+        }.items()}
+        self.app.config.update(SSO_CLIENT_SECRET="fixture-only", BASE_URL="https://trust.example.com")
+        self.assertNotIn(b"Continue with", self.client.get(login).data)
+        self.sign_in("admin", staff=True)
+        self.assertEqual(self.client.get(settings).status_code, 403)
+        self.post("/account/logout/", source="/")
+        self.sign_in("owner", staff=True)
+        self.assertIn(b"https://trust.example.com/account/sso/callback/", self.client.get(settings).data)
+        callback_query = {}
+
+        def token(**kwargs):
+            self.assertTrue(kwargs["code_verifier"])
+            now_epoch = int(time.time())
+            signed = jwt.encode({"alg": "RS256", "kid": "fixture"}, {
+                "sub": "reader-example-subject", "iss": issuer, "aud": "fixture-client",
+                "iat": now_epoch, "exp": now_epoch + 300, "nonce": callback_query["nonce"][0],
+            }, key)
+            return {"id_token": signed, "access_token": "fixture-token"}
+
+        def authorize(response):
+            nonlocal callback_query
+            self.assertEqual(response.status_code, 302)
+            callback_query = parse_qs(urlsplit(response.location).query)
+            self.assertEqual(callback_query["code_challenge_method"], ["S256"])
+            self.assertEqual(callback_query["scope"], ["openid"])
+            return "/account/sso/callback/?code=fixture-code&state=" + callback_query["state"][0]
+
+        with patch("portal.sso.discovery", return_value=provider), \
+                patch("portal.sso.OIDCClient.fetch_access_token", side_effect=token), \
+                patch("portal.sso.OIDCClient.fetch_jwk_set", return_value={"keys": [key.as_dict(private=False)]}):
+            result = self.post(settings, {"enabled": "on", "label": "Example Provider", "issuer": issuer,
+                                          "client_id": "fixture-client", "token_auth": "client_secret_basic"})
+            self.assertEqual(result.status_code, 302)
+            self.post("/account/logout/", source="/")
+            self.assertIn(b"Continue with Example Provider", self.client.get(login).data)
+            unlinked = authorize(self.post(start, source=login))
+            self.assertIn("/account/login/", self.client.get(unlinked).location)
+            self.sign_in("reader")
+            invalid = self.post(connection, {"password": "invalid", "action": "link"})
+            self.assertIn(b"Enter your current Trust Centre password", invalid.data)
+            link = authorize(self.post(connection, {"password": PASSWORD, "action": "link"}))
+            self.assertEqual(self.client.get(link).location, connection)
+            self.assertIn(b"Your account is connected", self.client.get(connection).data)
+            self.post("/account/logout/", source="/")
+            signed_in = authorize(self.post(start, {"next": "/library/"}, source=login))
+            self.assertEqual(self.client.get(signed_in).location, "/library/")
+            self.assertEqual(self.client.get("/notifications/").status_code, 200)
+            self.assertEqual(self.client.get("/manage/").status_code, 403)
 
     def test_public_tier_and_signed_out_agreement(self):
         self.sign_in("admin", staff=True)

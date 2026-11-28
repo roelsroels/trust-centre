@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Single sign-on{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Single sign-on</h1>
+  {% if linked %}
+    <p>Your account is connected to {{ provider }}.</p>
+  {% else %}
+    <p>Connect your existing Trust Centre account to {{ provider }}. Enter your current Trust Centre password to confirm.</p>
+  {% endif %}
+  <form class="stack" method="post">{{ csrf() }}
+    <p><label for="password">Current password</label><input id="password" name="password" type="password" autocomplete="current-password" required></p>
+    <button type="submit" name="action" value="{{ 'unlink' if linked else 'link' }}">{{ 'Disconnect' if linked else 'Connect single sign-on' }}</button>
+  </form>
+</section>
+{% endblock %}

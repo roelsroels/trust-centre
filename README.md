@@ -64,6 +64,12 @@ Category descriptions, document titles, and teasers are public. Publishing or re
 
 To verify a new installation, publish a sample PDF and try it with a customer account. Check the teaser and access request at a lower tier, agreement acceptance after granting access, and delivery of a password reset and a document update.
 
+## Single sign-on
+
+An Owner can configure one OpenID Connect provider under **Manage → Settings → Single sign-on**. Use the provider’s exact HTTPS issuer URL, register the callback URI shown on the page, and enable authorization code flow with S256 PKCE. Enter the client ID and select the provider’s token endpoint authentication method. Set `SSO_CLIENT_SECRET` in the web service environment and recreate the container before enabling SSO. The secret is kept out of the portal database and management screen.
+
+Users first sign in with their existing portal account, then use **Single sign-on** in the site navigation to connect their provider identity. After linking, they can use the provider on the sign-in page. The portal continues to control roles and document tiers. Admins and Owners still enter their portal authenticator code. Password sign-in remains available, and SSO creates no accounts automatically.
+
 ## Onboard customers
 
 From **Sign in → Request an account**, a customer supplies their work email and customer or company name. Open **Manage → Accounts → Account requests** to match the request to your customer records, select an access level, and approve or decline it.
