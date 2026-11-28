@@ -2,6 +2,8 @@
 
 Publish compliance reports, certificates, and policies in a branded, self-hosted portal. Customers can browse the public library, request an account or a higher access tier, and subscribe to document updates. Manage documents, versions, agreements, customers, and branding from the same site. The app uses Flask, SQLite, private PDF storage, and SMTP.
 
+See the [changelog](CHANGELOG.md) for release history.
+
 ## Run behind a reverse proxy
 
 You need Git, Docker Engine with Compose, an HTTPS hostname, and an SMTP service reachable from the containers.
