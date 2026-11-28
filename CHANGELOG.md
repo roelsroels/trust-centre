@@ -4,6 +4,9 @@ Changes to Trust Centre from the initial commit onward, grouped by the release t
 
 ## Unreleased
 
+- Added server-side session revocation on sign-out, account disablement, and password changes.
+- Queued public password reset requests so account lookup and SMTP delivery happen outside the web request. Reset links now open a token-free form.
+
 - Added README badges for the release, license, Docker Compose deployment, and container runtime.
 - Added repository topics and component labels. Issue templates now apply the bug and enhancement labels automatically.
 - Added this changelog and linked it from the README.

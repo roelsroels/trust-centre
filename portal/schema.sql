@@ -67,3 +67,13 @@ CREATE TABLE IF NOT EXISTS trust_sso_identity (
     PRIMARY KEY (issuer, subject),
     UNIQUE (issuer, account_id)
 );
+
+CREATE TABLE IF NOT EXISTS trust_session (
+    sid_hash TEXT PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES portal_account(id) ON DELETE CASCADE,
+    stamp TEXT NOT NULL,
+    otp_id INTEGER REFERENCES otp_totp_totpdevice(id) ON DELETE CASCADE,
+    expires INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS trust_session_account ON trust_session(account_id);
+CREATE INDEX IF NOT EXISTS trust_session_expiry ON trust_session(expires);

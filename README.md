@@ -116,7 +116,8 @@ Captured from a local Trust Centre using the fictional Alder Quay Systems demo.
 
 - Back up the `portal-data` volume, including `portal.sqlite3` and the `private/` PDFs. Stop both services before taking or restoring a filesystem backup so database and files represent the same point in time. Preserve the `.env` separately.
 - Run `./update.sh` from your deployment checkout after backing up. The script fast-forwards `main`, rebuilds the image shared by web and mail, restarts the services as needed, and shows their status. The web container initializes the database on startup.
-- Check password reset delivery with `docker compose logs --tail=50 web`. Account setup emails, access requests, and subscriber notifications use the mail worker. Check those with `docker compose logs --tail=50 mail`. Queued mail retries with backoff. Request a fresh password reset after correcting SMTP settings.
+- Check queued password resets, account setup emails, access requests, and subscriber notifications with `docker compose logs --tail=50 mail`. Failed deliveries retry with backoff. The web service sends admin-triggered password resets directly.
+- Configure the proxy and WAF to keep reset and setup tokens, subscription tokens, and SSO callback query strings out of logs. Avoid logging referrers or credential form bodies. Preserve the app's `Referrer-Policy` response header.
 - Keep the app's data volume off the public web root. Serve only the app's static assets directly.
 
 ## Local development

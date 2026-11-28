@@ -160,6 +160,12 @@ def process_mail(watch):
                     account = one("SELECT * FROM portal_account WHERE id=? AND is_active=1", mail["setup_account_id"])
                     if account and account["email"] == mail["email"] and account["password"].startswith("!setup:"):
                         reset_message(account)
+                elif mail["password_reset"]:
+                    from .auth import reset_message
+
+                    account = one("SELECT * FROM portal_account WHERE email=? COLLATE NOCASE AND is_active=1", mail["email"])
+                    if account and (not account["password"].startswith("!") or account["password"].startswith("!setup:")):
+                        reset_message(account)
                 else:
                     send(mail["email"], mail["subject"], mail["body"])
             except (OSError, ValueError) as error:

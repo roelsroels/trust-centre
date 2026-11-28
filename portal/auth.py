@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import re
+import secrets
 import time
 from urllib.parse import urlsplit
 
@@ -39,23 +40,41 @@ def password_error(password):
 
 
 def signature(account):
-    identity = f"{account['id']}:{account['password']}:{account['email']}:{account['is_staff']}:{account['is_superuser']}"
+    identity = ":".join(str(account[key]) for key in
+                        ("id", "password", "email", "is_staff", "is_superuser", "auth_generation"))
     return hmac.new(current_app.secret_key.encode(), identity.encode(), "sha256").hexdigest()
 
 
+def session_hash(sid):
+    return hashlib.sha256(sid.encode()).hexdigest()
+
+
+def revoke_sessions(account_id):
+    run("DELETE FROM trust_session WHERE account_id=?", account_id)
+
+
+def revoke_current_session():
+    if sid := session.get("sid"):
+        run("DELETE FROM trust_session WHERE sid_hash=?", session_hash(sid))
+
+
 def load_user():
-    user = None
-    if session.get("account"):
-        candidate = one("SELECT * FROM portal_account WHERE id=? AND is_active=1", session["account"])
-        if candidate and hmac.compare_digest(signature(candidate), session.get("stamp", "")):
-            user = candidate
-        else:
+    g.user = None
+    g.staff = False
+    sid = session.get("sid")
+    if not sid:
+        if "account" in session:  # Retire sessions issued before server-side revocation.
             session.clear()
-    g.user = user
-    g.staff = bool(user and user["is_staff"] and session.get("otp") and one(
-        "SELECT id FROM otp_totp_totpdevice WHERE user_id=? AND id=? AND confirmed=1",
-        user["id"], session["otp"],
-    ))
+        return
+    record = one("""SELECT a.*,s.stamp AS session_stamp,s.otp_id AS session_otp FROM trust_session s
+                    JOIN portal_account a ON a.id=s.account_id
+                    WHERE s.sid_hash=? AND s.expires>? AND a.is_active=1""",
+                 session_hash(sid), int(time.time()))
+    if not record or not hmac.compare_digest(signature(record), record["session_stamp"]):
+        session.clear()
+        return
+    g.user = record
+    g.staff = bool(record["is_staff"] and record["session_otp"])
 
 
 def limit(action, identity):
@@ -100,8 +119,15 @@ def destination(value, fallback):
 
 
 def establish_session(account, device=None):
+    epoch = int(time.time())
+    sid = secrets.token_urlsafe(32)
+    run("DELETE FROM trust_session WHERE expires<=?", epoch)
+    revoke_current_session()
+    run("INSERT INTO trust_session(sid_hash,account_id,stamp,otp_id,expires) VALUES (?,?,?,?,?)",
+        session_hash(sid), account["id"], signature(account), device,
+        epoch + int(current_app.permanent_session_lifetime.total_seconds()))
     session.clear()
-    session.update(account=account["id"], stamp=signature(account), otp=device)
+    session["sid"] = sid
     run("UPDATE portal_account SET last_login=? WHERE id=?", now(), account["id"])
 
 
@@ -205,6 +231,7 @@ def request_new_account():
 
 @auth.post("/account/logout/")
 def logout():
+    revoke_current_session()
     session.clear()
     return redirect("/")
 
@@ -236,26 +263,33 @@ def reset():
         email = request.form.get("email", "").strip()
         if not limit("reset", email):
             abort(429)
-        for account in rows("SELECT * FROM portal_account WHERE email=? COLLATE NOCASE AND is_active=1", email):
-            if account["password"].startswith("!") and not account["password"].startswith("!setup:"):
-                continue
-            try:
-                reset_message(account)
-            except (OSError, ValueError) as error:
-                current_app.logger.warning("Could not send password reset for account %s (%s)", account["id"], type(error).__name__)
+        if 1 <= len(email) <= 254:
+            run("""INSERT INTO portal_outgoingmail(email,subject,body,expected_status,attempts,next_attempt,password_reset)
+                   VALUES (?,'','','',0,?,1)""", email, now())
         return render_template("message.html", heading="Check your email",
                                text="If an active account uses that address, you’ll receive a password reset link.")
     return render_template("reset.html", valid=True)
 
 
-@auth.route("/account/reset/confirm/<token>/", methods=["GET", "POST"])
-def reset_confirm(token):
+@auth.get("/account/reset/confirm/<token>/")
+def reset_begin(token):
+    session.pop("reset_pending", None)
     try:
-        identifier, stamp = reset_serializer().loads(token, max_age=3600)
+        (identifier, stamp), issued = reset_serializer().loads(token, max_age=3600, return_timestamp=True)
     except BadData:
-        identifier, stamp = None, ""
+        return redirect(url_for("auth.reset_confirm"))
     account = one("SELECT * FROM portal_account WHERE id=? AND is_active=1", identifier)
-    valid = bool(account and hmac.compare_digest(stamp, signature(account)))
+    if account and hmac.compare_digest(stamp, signature(account)):
+        session["reset_pending"] = {"id": identifier, "stamp": stamp, "expires": int(issued.timestamp()) + 3600}
+    return redirect(url_for("auth.reset_confirm"))
+
+
+@auth.route("/account/reset/confirm/", methods=["GET", "POST"])
+def reset_confirm():
+    pending = session.get("reset_pending")
+    account = one("SELECT * FROM portal_account WHERE id=? AND is_active=1", pending["id"]) if pending else None
+    valid = bool(account and pending["expires"] > time.time()
+                 and hmac.compare_digest(pending["stamp"], signature(account)))
     if valid and request.method == "POST":
         password = request.form.get("password", "")
         error = password_error(password)
@@ -266,11 +300,17 @@ def reset_confirm(token):
         else:
             hashed = hash_password(password)
             with write():
-                changed = run("UPDATE portal_account SET password=? WHERE id=? AND password=? AND is_active=1",
-                              hashed, account["id"], account["password"]).rowcount
-            if changed:
-                session.clear()
-                flash("Password changed. Sign in with your new password.")
-                return redirect(url_for("auth.login"))
+                current = one("SELECT * FROM portal_account WHERE id=? AND is_active=1", account["id"])
+                if current and pending["expires"] > time.time() and hmac.compare_digest(
+                    pending["stamp"], signature(current)
+                ):
+                    run("UPDATE portal_account SET password=? WHERE id=?", hashed, account["id"])
+                    revoke_sessions(account["id"])
+                    revoke_current_session()
+                    session.clear()
+                    flash("Password changed. Sign in with your new password.")
+                    return redirect(url_for("auth.login"))
             valid = False
+    if not valid:
+        session.pop("reset_pending", None)
     return render_template("reset.html", confirm=True, valid=valid)

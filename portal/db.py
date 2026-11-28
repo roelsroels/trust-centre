@@ -88,6 +88,10 @@ def initialize():
         if one("SELECT version FROM trust_installed")["version"] < 5:
             migrate_account_request_tiers()
             run("UPDATE trust_installed SET version=5")
+        if one("SELECT version FROM trust_installed")["version"] < 6:
+            run("ALTER TABLE portal_account ADD COLUMN auth_generation INTEGER NOT NULL DEFAULT 0")
+            run("ALTER TABLE portal_outgoingmail ADD COLUMN password_reset INTEGER NOT NULL DEFAULT 0")
+            run("UPDATE trust_installed SET version=6")
         run("""INSERT OR IGNORE INTO trust_font(key,name,regular,medium,italic,medium_italic)
                VALUES ('chromatica','Chromatica','','','','')""")
 

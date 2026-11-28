@@ -248,35 +248,61 @@ class PortalFlows(unittest.TestCase):
         with self.app.app_context():
             self.assertEqual(one("SELECT is_staff FROM portal_account WHERE id=?", self.reader)["is_staff"], 1)
 
-    def test_existing_admin_session_only_asks_for_authenticator(self):
+    def test_legacy_cookie_requires_a_fresh_sign_in(self):
         with self.app.app_context():
             account = one("SELECT * FROM portal_account WHERE id=?", self.admin)
             with self.client.session_transaction() as cookie:
                 cookie.update(account=self.admin, stamp=signature(account), otp=None)
         response = self.client.get("/manage/documents/")
-        self.assertIn("/account/authenticator/", response.location)
-        self.assertNotIn(b'name="password"', self.client.get(response.location).data)
-        key = hashlib.sha256(b"admin").digest()[:20]
-        code = pyotp.TOTP(base64.b32encode(key).decode()).now()
-        result = self.post(response.location, {"otp": code})
-        self.assertEqual(result.location, "/manage/documents/")
-        self.assertEqual(self.client.get(result.location).status_code, 200)
+        self.assertIn("/account/login/", response.location)
 
-    def test_password_reset_uses_smtp_and_invalidates_link_and_session(self):
+    def test_sign_out_and_disabling_revoke_sessions(self):
+        self.sign_in("reader")
+        signed_out = self.app.test_client()
+        signed_out.set_cookie("trust_session", self.client.get_cookie("trust_session").value)
+        self.assertEqual(signed_out.get("/notifications/").status_code, 200)
+        self.post("/account/logout/", source="/")
+        self.assertEqual(signed_out.get("/notifications/").status_code, 302)
+
+        self.sign_in("reader")
+        disabled = self.app.test_client()
+        disabled.set_cookie("trust_session", self.client.get_cookie("trust_session").value)
+        self.post("/account/logout/", source="/")
+        # Sign the customer in again in another browser so its active session can be revoked by the admin.
+        original = self.client
+        self.client = disabled
+        self.sign_in("reader")
+        self.client = original
+        self.sign_in("admin", staff=True)
+        edit = f"/manage/accounts/{self.reader}/"
+        details = {"username": "reader", "email": "reader@example.com", "tier": 10}
+        self.assertEqual(self.post(edit, details).status_code, 302)
+        self.assertEqual(self.post(edit, {**details, "is_active": "on"}).status_code, 302)
+        self.assertEqual(disabled.get("/notifications/").status_code, 302)
+
+    def test_password_reset_queues_mail_and_uses_a_token_free_form(self):
         stale = self.app.test_client()
-        with self.client.get("/account/login/") as login:
-            self.assertIn(b"Username", login.data)
         self.sign_in("reader")
         stale.set_cookie("trust_session", self.client.get_cookie("trust_session").value)
         with patch("portal.auth.send") as send:
-            result = self.post("/account/reset/", {"email": "reader@example.com"})
-            self.assertIn(b"Check your email", result.data)
+            known = self.post("/account/reset/", {"email": "reader@example.com"})
+            unknown = self.post("/account/reset/", {"email": "unknown@example.com"})
+            self.assertEqual(known.data, unknown.data)
+            send.assert_not_called()
+            with self.app.app_context():
+                self.assertEqual(len(rows("SELECT id FROM portal_outgoingmail WHERE password_reset=1")), 2)
+            worker = self.app.test_cli_runner().invoke(args=["send_queue"])
+            self.assertEqual(worker.exit_code, 0, worker.output)
             self.assertEqual(send.call_count, 1)
         body = send.call_args.args[2]
         link = re.search(r"/account/reset/confirm/[^/]+/", body).group(0)
+        start = self.client.get(link)
+        self.assertEqual(start.headers["Referrer-Policy"], "no-referrer")
+        self.assertEqual(start.location, "/account/reset/confirm/")
         password = "replacement-test-password"
-        self.assertEqual(self.post(link, {"password": password, "confirmation": password}).status_code, 302)
-        self.assertIn(b"expired or already been used", self.client.get(link).data)
+        self.assertEqual(self.post(start.location, {"password": password, "confirmation": password}).status_code, 302)
+        self.client.get(link)
+        self.assertIn(b"expired or already been used", self.client.get(start.location).data)
         self.assertEqual(stale.get("/notifications/").status_code, 302)
         response = self.post("/account/login/", {"username": "reader", "password": password})
         self.assertEqual(response.status_code, 302)
@@ -419,8 +445,11 @@ class PortalFlows(unittest.TestCase):
         self.assertIn(customer["username"], message[2])
         link = re.search(r"/account/reset/confirm/[^/]+/", message[2]).group(0)
         password = "initial-customer-password"
-        self.assertEqual(self.post(link, {"password": password, "confirmation": password}).status_code, 302)
-        self.assertIn(b"expired or already been used", self.client.get(link).data)
+        start = self.client.get(link)
+        self.assertEqual(start.location, "/account/reset/confirm/")
+        self.assertEqual(self.post(start.location, {"password": password, "confirmation": password}).status_code, 302)
+        self.client.get(link)
+        self.assertIn(b"expired or already been used", self.client.get(start.location).data)
         signed_in = self.post("/account/login/", {"username": customer["username"], "password": password})
         self.assertEqual(signed_in.location, "/library/")
 

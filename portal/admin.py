@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
 
 from .account_requests import approve_request, email_address, request_account
-from .auth import hash_password, password_error, reset_message
+from .auth import hash_password, password_error, reset_message, revoke_sessions
 from .db import now, one, rows, run, write
 from .fonts import STYLES, font_choices, font_url
 from .models import BRANDING, TIERS, Tier
@@ -365,6 +365,9 @@ def edit_account(identifier=None):
                     latest = manageable_account(identifier)
                     run("""UPDATE portal_account SET username=?,email=?,tier=?,is_active=?,is_staff=?
                            WHERE id=?""", username, email, tier, active, staff, identifier)
+                    if (latest["is_staff"], latest["is_active"], latest["email"]) != (staff, active, email):
+                        run("UPDATE portal_account SET auth_generation=auth_generation+1 WHERE id=?", identifier)
+                        revoke_sessions(identifier)
                     if latest["is_staff"] and not staff:
                         run("DELETE FROM otp_totp_totpdevice WHERE user_id=?", identifier)
             else:

@@ -66,7 +66,9 @@ def create_app(**overrides):
     def secure_response(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["Referrer-Policy"] = (
+            "no-referrer" if request.endpoint in {"auth.reset_begin", "sso.callback"} else "same-origin"
+        )
         if not app.config["LOCAL"] and request.is_secure:
             response.headers["Strict-Transport-Security"] = "max-age=86400"
         if request.endpoint != "static":
