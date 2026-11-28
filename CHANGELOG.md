@@ -4,6 +4,8 @@ Changes to Trust Centre from the initial commit onward, grouped by the release t
 
 ## Unreleased
 
+- Added README badges for the release, license, Docker Compose deployment, and container runtime.
+- Added repository topics and component labels. Issue templates now apply the bug and enhancement labels automatically.
 - Added this changelog and linked it from the README.
 
 ## [v1.0](https://github.com/roelsroels/trust-centre/releases/tag/v1.0) · 2026-11-28

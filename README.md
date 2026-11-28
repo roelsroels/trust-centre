@@ -1,5 +1,10 @@
 # Trust Centre — Self-hosted compliance document portal
 
+[![Latest release](https://img.shields.io/github/v/release/roelsroels/trust-centre?label=release)](https://github.com/roelsroels/trust-centre/releases/latest)
+[![MIT license](https://img.shields.io/github/license/roelsroels/trust-centre)](LICENSE)
+[![Deploy with Docker Compose](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED?logo=docker&logoColor=white)](#run-behind-a-reverse-proxy)
+[![Container runtime: Python 3.13](https://img.shields.io/badge/container%20runtime-Python%203.13-3776AB?logo=python&logoColor=white)](Dockerfile)
+
 Publish compliance reports, certificates, and policies in a branded, self-hosted portal. Customers can browse the public library, request an account or a higher access tier, and subscribe to document updates. Manage documents, versions, agreements, customers, and branding from the same site. The app uses Flask, SQLite, private PDF storage, and SMTP.
 
 See the [changelog](CHANGELOG.md) for release history.
