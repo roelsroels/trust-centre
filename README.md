@@ -1,12 +1,15 @@
 # Trust Centre — Self-hosted compliance document portal
 
-A self-hosted portal for compliance reports, certificates and policies. It uses Flask, SQLite, private PDF storage and SMTP. The customer interface is rendered on the server and uses a small script for the agreement dialog.
+Publish compliance reports, certificates, and policies in a branded, self-hosted portal. Customers can browse the public library, request an account or a higher access tier, and subscribe to document updates. Manage documents, versions, agreements, customers, and branding from the same site. The app uses Flask, SQLite, private PDF storage, and SMTP.
 
 ## Run behind a reverse proxy
 
-You need Git, Docker Engine with Compose, a public HTTPS hostname, and an SMTP service reachable from the containers. For a private repository, give the deployment server read access before cloning. A repository deploy key is sufficient. [GitHub deploy-key guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys)
+You need Git, Docker Engine with Compose, an HTTPS hostname, and an SMTP service reachable from the containers.
 
-From the repository root:
+```sh
+git clone https://github.com/roelsroels/trust-centre.git
+cd trust-centre
+```
 
 1. Copy `.env.example` to `.env` and run `chmod 600 .env`. Generate a secret with `openssl rand -hex 48` and set `SECRET_KEY`. Set `BASE_URL` to your HTTPS origin, with no path. Set `PORTAL_PORT` if port 8000 is already in use.
 2. Configure `SMTP_HOST`, `SMTP_PORT`, and `FROM_EMAIL`, plus `SMTP_USER` and `SMTP_PASSWORD` if your server requires authentication. For submission on port 587, use `SMTP_TLS=1` and `SMTP_SSL=0`. If SMTP runs on the Docker host, use a hostname that the containers can reach and that matches its TLS certificate.
@@ -41,7 +44,7 @@ location / {
 
 Redirect HTTP to HTTPS at the proxy. Keep the web service private behind the proxy, overwrite the forwarded headers as shown, and keep proxy caching disabled. The application trusts these headers for HTTPS and sign-in throttling. Run one web worker and one mail worker per installation.
 
-The Docker container names are `trust-portal-<project>-web` and `trust-portal-<project>-mail`. Use a distinct Compose project name for each new installation on the same host. Keep the project name of an existing installation to reuse its data volume and network. The Compose service names are still `web` and `mail`.
+The Docker container names are `trust-portal-<project>-web` and `trust-portal-<project>-mail`. Use a distinct Compose project name for each new installation on the same host. Keep the project name of an existing installation to reuse its data volume and network. Use `web` and `mail` as the service names in Compose commands.
 
 ## Manage the portal
 
@@ -49,7 +52,7 @@ Open `/manage/` or select **Manage** in the main navigation. Admins and Owners e
 
 | Screen | What you can do |
 | --- | --- |
-| **Overview** | Open common management tasks and see how many access requests are awaiting review. |
+| **Overview** | Open common management tasks and see pending account approvals and access requests. |
 | **Documents** | Add a PDF with a category, public teaser, minimum access level, and optional agreement. Preview the uploaded draft, then choose **Publish** under **Versions**. Upload replacements from the same page, restore a retained version, or review recorded agreement acceptances. |
 | **Categories** | Add and edit the categories used by the public library. Move documents out of a category before deleting it. |
 | **Accounts** | Review account requests, import customers from CSV, create customers, assign access levels, enable or disable accounts, send password resets, and delete accounts. Higher customer tiers include lower tiers. Only Owners can manage administrator accounts. After granting administrator access, use `enable_totp` to enrol that administrator. |
@@ -57,7 +60,7 @@ Open `/manage/` or select **Manage** in the main navigation. Admins and Owners e
 | **Subscribers** | Review subscription status and import a UTF-8 CSV with an `email` column. New recipients receive a confirmation link. |
 | **Settings** | Edit homepage copy, team description, logo URL, colours, font, and the access-request inbox. Use **Manage webfonts** to configure or add a webfont. |
 
-Category descriptions, document titles, and teasers are public. Publishing or restoring a version emails confirmed subscribers. Document links still require the appropriate access tier and, where enabled, agreement acceptance. The portal uses local accounts and manual access grants.
+Category descriptions, document titles, and teasers are public. Publishing or restoring a version emails confirmed subscribers. Document links still require the appropriate access tier and, where enabled, agreement acceptance. The portal uses local accounts and manual access grants. Outgoing HTML emails use the site's active colours, font, and logo, with a plain-text alternative.
 
 To verify a new installation, publish a sample PDF and try it with a customer account. Check the teaser and access request at a lower tier, agreement acceptance after granting access, and delivery of a password reset and a document update.
 
@@ -96,15 +99,11 @@ Captured from a local Trust Centre using the fictional Alder Quay Systems demo.
 
 ![Manage dashboard with sections for documents, accounts, requests, categories, subscribers, and settings](docs/screenshots/manage-dashboard.jpg)
 
-## Upgrade from the previous Django version
-
-Back up the database and private files together before updating. Keep the existing Compose project name, data volume, `.env`, and any local Compose override. The Flask app uses the existing SQLite records and private PDFs in place. Existing passwords, authenticator enrolments, document revisions, agreements, subscribers, and queued mail carry forward. Users must sign in again and request fresh links for any outstanding password resets. The first startup also works on an empty volume.
-
 ## Maintain
 
 - Back up the `portal-data` volume, including `portal.sqlite3` and the `private/` PDFs. Stop both services before taking or restoring a filesystem backup so database and files represent the same point in time. Preserve the `.env` separately.
-- Run `./update.sh` from your deployment checkout after backing up. If the checkout predates the script, first run `git pull --ff-only origin main`. The script fast-forwards `main`, rebuilds the image shared by web and mail, restarts the services as needed, and shows their status. The web container initializes the database on startup.
-- Check password reset delivery with `docker compose logs --tail=50 web`. Access requests and subscriber notifications use the mail worker. Check those with `docker compose logs --tail=50 mail`. Queued mail retries with backoff. Request a fresh password reset after correcting SMTP settings.
+- Run `./update.sh` from your deployment checkout after backing up. The script fast-forwards `main`, rebuilds the image shared by web and mail, restarts the services as needed, and shows their status. The web container initializes the database on startup.
+- Check password reset delivery with `docker compose logs --tail=50 web`. Account setup emails, access requests, and subscriber notifications use the mail worker. Check those with `docker compose logs --tail=50 mail`. Queued mail retries with backoff. Request a fresh password reset after correcting SMTP settings.
 - Keep the app's data volume off the public web root. Serve only the app's static assets directly.
 
 ## Local development
